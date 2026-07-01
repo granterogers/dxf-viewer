@@ -1,4 +1,4 @@
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
@@ -39,6 +39,9 @@ public class DxfTabViewModel : INotifyPropertyChanged
 
     public DxfScene? Scene { get; private set; }
 
+    public System.Collections.ObjectModel.ObservableCollection<LayerInfo> Layers { get; } = new();
+    public Action? RenderAction { get; set; }
+
     private List<string> _dirFiles = new();
     private int _dirIndex = -1;
     public bool CanNavPrev => _dirFiles.Count > 1;
@@ -49,6 +52,8 @@ public class DxfTabViewModel : INotifyPropertyChanged
 
     public ICommand NavPrevCommand { get; }
     public ICommand NavNextCommand { get; }
+    public ICommand AllLayersOnCommand  { get; }
+    public ICommand AllLayersOffCommand { get; }
 
     public DxfTabViewModel(string filePath, Action<DxfTabViewModel> closeCallback)
     {
@@ -56,6 +61,8 @@ public class DxfTabViewModel : INotifyPropertyChanged
         _closeCallback = closeCallback;
         NavPrevCommand = new RelayCommand(_ => NavigatePrev(), _ => CanNavPrev);
         NavNextCommand = new RelayCommand(_ => NavigateNext(), _ => CanNavNext);
+        AllLayersOnCommand  = new RelayCommand(_ => { foreach (var l in Layers) l.IsVisible = true; });
+        AllLayersOffCommand = new RelayCommand(_ => { foreach (var l in Layers) l.IsVisible = false; });
         RefreshDirList();
     }
 
@@ -86,6 +93,13 @@ public class DxfTabViewModel : INotifyPropertyChanged
         {
             var scene = await Task.Run(() => DxfParser.Parse(path));
             Scene = scene;
+            Layers.Clear();
+            foreach (var (name, color) in scene.Layers)
+            {
+                var info = new LayerInfo(name, color);
+                info.PropertyChanged += (_, _) => RenderAction?.Invoke();
+                Layers.Add(info);
+            }
             State = TabState.Loaded;
             FitAction?.Invoke();
         }

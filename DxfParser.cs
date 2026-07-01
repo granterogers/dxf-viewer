@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using netDxf;
 using netDxf.Entities;
 using netDxf.Tables;
@@ -13,7 +13,7 @@ public static class DxfParser
 
     public static DxfScene Parse(string filePath)
     {
-        // Try netDxf first — handles modern DXF with a $ACADVER header.
+        // Try netDxf first -- handles modern DXF with a $ACADVER header.
         try
         {
             DxfDocument doc;
@@ -39,7 +39,7 @@ public static class DxfParser
         doc.Texts.Any() || doc.MTexts.Any() || doc.Inserts.Any() ||
         doc.Splines.Any() || doc.Points.Any();
 
-    // ─── Modern parser (netDxf) ──────────────────────────────────────────────
+    // --- Modern parser (netDxf) ---
 
     private static void ParseDocument(DxfScene scene, DxfDocument doc)
     {
@@ -78,7 +78,7 @@ public static class DxfParser
         double sx = ins.Scale.X, sy = ins.Scale.Y;
         double tx = ins.Position.X, ty = ins.Position.Y;
 
-        // Build 2D transform: scale → rotate → translate
+        // Build 2D transform: scale -> rotate -> translate
         var xform = new Matrix4(
             cosR * sx, -sinR * sy, 0, tx,
             sinR * sx,  cosR * sy, 0, ty,
@@ -98,12 +98,14 @@ public static class DxfParser
             0);
     }
 
+    private static string LayerOf(EntityObject e) => e.Layer?.Name ?? "";
+
     private static void AddLine(DxfScene scene, Line e, Layer? bl, Matrix4? xf = null)
     {
         var s = xf.HasValue ? ApplyXform(e.StartPoint, xf.Value) : e.StartPoint;
         var p = xf.HasValue ? ApplyXform(e.EndPoint, xf.Value) : e.EndPoint;
         scene.Lines.Add(new SceneLine((float)s.X, (float)s.Y, (float)p.X, (float)p.Y,
-            ResolveColor(e, bl)));
+            ResolveColor(e, bl)) { Layer = LayerOf(e) });
     }
 
     private static void AddCircle(DxfScene scene, Circle e, Layer? bl, Matrix4? xf = null)
@@ -111,7 +113,7 @@ public static class DxfParser
         var c = xf.HasValue ? ApplyXform(e.Center, xf.Value) : e.Center;
         float scale = xf.HasValue ? (float)Math.Sqrt(xf.Value.M11 * xf.Value.M11 + xf.Value.M21 * xf.Value.M21) : 1f;
         scene.Circles.Add(new SceneCircle((float)c.X, (float)c.Y, (float)e.Radius * scale,
-            ResolveColor(e, bl)));
+            ResolveColor(e, bl)) { Layer = LayerOf(e) });
     }
 
     private static void AddArc(DxfScene scene, Arc e, Layer? bl, Matrix4? xf = null)
@@ -119,7 +121,7 @@ public static class DxfParser
         var c = xf.HasValue ? ApplyXform(e.Center, xf.Value) : e.Center;
         float scale = xf.HasValue ? (float)Math.Sqrt(xf.Value.M11 * xf.Value.M11 + xf.Value.M21 * xf.Value.M21) : 1f;
         scene.Arcs.Add(new SceneArc((float)c.X, (float)c.Y, (float)e.Radius * scale,
-            (float)e.StartAngle, (float)e.EndAngle, ResolveColor(e, bl)));
+            (float)e.StartAngle, (float)e.EndAngle, ResolveColor(e, bl)) { Layer = LayerOf(e) });
     }
 
     private static void AddEllipse(DxfScene scene, Ellipse e, Layer? bl, Matrix4? xf = null)
@@ -137,6 +139,7 @@ public static class DxfParser
         int segs = Math.Max(16, (int)(span * 180 / Math.PI / ArcDegreesPerSeg));
 
         var poly = new ScenePolyline { Closed = !isArc, Color = ResolveColor(e, bl) };
+        poly.Layer = LayerOf(e);
         for (int i = 0; i <= segs; i++)
         {
             double t = startRad + i * span / segs;
@@ -155,6 +158,7 @@ public static class DxfParser
         if (verts.Count < 2) return;
 
         var poly = new ScenePolyline { Closed = e.IsClosed, Color = ResolveColor(e, bl) };
+        poly.Layer = LayerOf(e);
         for (int i = 0; i < verts.Count; i++)
         {
             int ni = (i + 1) % verts.Count;
@@ -211,6 +215,7 @@ public static class DxfParser
         if (verts.Count < 2) return;
 
         var poly = new ScenePolyline { Closed = e.IsClosed, Color = ResolveColor(e, bl) };
+        poly.Layer = LayerOf(e);
         foreach (var v in verts)
         {
             var pt = xf.HasValue ? ApplyXform(v.Position, xf.Value) : v.Position;
@@ -224,6 +229,7 @@ public static class DxfParser
         var pts = e.PolygonalVertexes(64);
         if (pts == null || pts.Count < 2) return;
         var poly = new ScenePolyline { Color = ResolveColor(e, bl) };
+        poly.Layer = LayerOf(e);
         foreach (var p in pts)
             poly.Points.Add(new SKPoint((float)p.X, (float)p.Y));
         scene.Polylines.Add(poly);
@@ -236,7 +242,7 @@ public static class DxfParser
         scene.Texts.Add(new SceneText(
             (float)e.Position.X, (float)e.Position.Y,
             (float)h, (float)e.Rotation,
-            DecodeDxfText(e.Value), ResolveColor(e, bl)));
+            DecodeDxfText(e.Value), ResolveColor(e, bl)) { Layer = LayerOf(e) });
     }
 
     private static void AddMText(DxfScene scene, MText e, Layer? bl)
@@ -247,7 +253,7 @@ public static class DxfParser
         scene.Texts.Add(new SceneText(
             (float)e.Position.X, (float)e.Position.Y,
             (float)h, (float)e.Rotation,
-            raw, ResolveColor(e, bl)));
+            raw, ResolveColor(e, bl)) { Layer = LayerOf(e) });
     }
 
     private static string DecodeDxfText(string s)
@@ -262,9 +268,9 @@ public static class DxfParser
                 char c = s[i + 2];
                 switch (char.ToLower(c))
                 {
-                    case 'c': sb.Append('∅'); i += 3; break; // ∅ diameter
-                    case 'd': sb.Append('°'); i += 3; break; // °
-                    case 'p': sb.Append('±'); i += 3; break; // ±
+                    case 'c': sb.Append('∅'); i += 3; break; // diameter
+                    case 'd': sb.Append('°'); i += 3; break; // degree
+                    case 'p': sb.Append('±'); i += 3; break; // plus-minus
                     case 'u': case 'o': i += 3; break;            // toggle, skip
                     default:
                         if (char.IsDigit(c) && i + 4 < s.Length &&
@@ -283,14 +289,14 @@ public static class DxfParser
         return sb.ToString();
     }
 
-    // ─── Color resolution ────────────────────────────────────────────────────
+    // --- Color resolution ---
 
     private static SKColor ResolveColor(EntityObject entity, Layer? blockLayer)
     {
         var aci = entity.Color;
         if (aci.IsByBlock) aci = blockLayer?.Color ?? AciColor.Default;
         if (aci.IsByLayer) aci = entity.Layer?.Color ?? AciColor.Default;
-        if (aci.IsByLayer || aci.IsByBlock) return new SKColor(230, 230, 230);
+        if (aci.IsByLayer || aci.IsByBlock) return new SKColor(255, 255, 255);
         if (aci.UseTrueColor) return new SKColor(aci.R, aci.G, aci.B);
         return AciIndexToSKColor(aci.Index);
     }
@@ -303,7 +309,7 @@ public static class DxfParser
         4  => new SKColor(  0, 255, 255),
         5  => new SKColor(  0,   0, 255),
         6  => new SKColor(255,   0, 255),
-        7  => new SKColor(230, 230, 230),
+        7  => new SKColor(255, 255, 255),
         8  => new SKColor(128, 128, 128),
         9  => new SKColor(192, 192, 192),
         _  => AciPaletteApprox(idx)
@@ -321,10 +327,10 @@ public static class DxfParser
         return new SKColor(200, 200, 200);
     }
 
-    // ─── Legacy (headerless) DXF parser ─────────────────────────────────────
+    // --- Legacy (headerless) DXF parser ---
     // Handles pre-R12 files that lack $ACADVER/HEADER/BLOCKS.
-    // Entities: POLYLINE+VERTEX+SEQEND, CIRCLE, ARC, LINE, TEXT.
-    // DIMENSION and everything else is silently skipped.
+    // Entities: POLYLINE+VERTEX+SEQEND (with bulge arcs), CIRCLE, ARC, LINE, TEXT, DIMENSION.
+    // Unknown entities are silently skipped.
 
     private readonly record struct GrpRec(int Code, string Value);
 
@@ -377,9 +383,10 @@ public static class DxfParser
                 case "LINE":     i = LegacyLine(scene, recs, i + 1);     break;
                 case "CIRCLE":   i = LegacyCircle(scene, recs, i + 1);   break;
                 case "ARC":      i = LegacyArc(scene, recs, i + 1);      break;
-                case "POLYLINE": i = LegacyPolyline(scene, recs, i + 1); break;
-                case "TEXT":     i = LegacyText(scene, recs, i + 1);     break;
-                default:         i = NextCode0(recs, i + 1);              break;
+                case "POLYLINE":  i = LegacyPolyline(scene, recs, i + 1);  break;
+                case "TEXT":      i = LegacyText(scene, recs, i + 1);      break;
+                case "DIMENSION": i = LegacyDimension(scene, recs, i + 1); break;
+                default:          i = NextCode0(recs, i + 1);              break;
             }
         }
     }
@@ -396,7 +403,14 @@ public static class DxfParser
         for (int i = start; i < Math.Min(end, recs.Count); i++)
             if (recs[i].Code == 62 && short.TryParse(recs[i].Value, out short aci))
                 return AciIndexToSKColor(aci);
-        return new SKColor(230, 230, 230);
+        return new SKColor(255, 255, 255);
+    }
+
+    private static string LegacyLayer(List<GrpRec> recs, int start, int end)
+    {
+        for (int i = start; i < Math.Min(end, recs.Count); i++)
+            if (recs[i].Code == 8) return recs[i].Value;
+        return "";
     }
 
     private static float ParseF(string s) =>
@@ -415,7 +429,8 @@ public static class DxfParser
                 case 11: x1 = ParseF(recs[i].Value); break;
                 case 21: y1 = ParseF(recs[i].Value); break;
             }
-        scene.Lines.Add(new SceneLine(x0, y0, x1, y1, LegacyColor(recs, start, end)));
+        scene.Lines.Add(new SceneLine(x0, y0, x1, y1, LegacyColor(recs, start, end))
+            { Layer = LegacyLayer(recs, start, end) });
         return end;
     }
 
@@ -431,7 +446,8 @@ public static class DxfParser
                 case 40: r  = ParseF(recs[i].Value); break;
             }
         if (r > 0)
-            scene.Circles.Add(new SceneCircle(cx, cy, r, LegacyColor(recs, start, end)));
+            scene.Circles.Add(new SceneCircle(cx, cy, r, LegacyColor(recs, start, end))
+                { Layer = LegacyLayer(recs, start, end) });
         return end;
     }
 
@@ -449,7 +465,8 @@ public static class DxfParser
                 case 51: ea = ParseF(recs[i].Value); break;
             }
         if (r > 0)
-            scene.Arcs.Add(new SceneArc(cx, cy, r, sa, ea, LegacyColor(recs, start, end)));
+            scene.Arcs.Add(new SceneArc(cx, cy, r, sa, ea, LegacyColor(recs, start, end))
+                { Layer = LegacyLayer(recs, start, end) });
         return end;
     }
 
@@ -462,7 +479,8 @@ public static class DxfParser
             if (recs[i].Code == 70 && int.TryParse(recs[i].Value, out int flags))
                 closed = (flags & 1) != 0;
 
-        var poly = new ScenePolyline { Color = color, Closed = closed };
+        // Collect vertices with bulge values (code 42)
+        var rawVerts = new List<(float x, float y, float bulge)>();
         int i2 = hdrEnd;
         while (i2 < recs.Count)
         {
@@ -470,13 +488,14 @@ public static class DxfParser
             if (recs[i2].Value == "VERTEX")
             {
                 int vEnd = NextCode0(recs, i2 + 1);
-                float vx = 0, vy = 0;
+                float vx = 0, vy = 0, vb = 0;
                 for (int j = i2 + 1; j < vEnd; j++)
                 {
-                    if (recs[j].Code == 10) vx = ParseF(recs[j].Value);
+                    if (recs[j].Code == 10)      vx = ParseF(recs[j].Value);
                     else if (recs[j].Code == 20) vy = ParseF(recs[j].Value);
+                    else if (recs[j].Code == 42) vb = ParseF(recs[j].Value);
                 }
-                poly.Points.Add(new SKPoint(vx, vy));
+                rawVerts.Add((vx, vy, vb));
                 i2 = vEnd;
             }
             else if (recs[i2].Value == "SEQEND")
@@ -486,8 +505,91 @@ public static class DxfParser
             }
             else break;
         }
-        if (poly.Points.Count >= 2) scene.Polylines.Add(poly);
+
+        if (rawVerts.Count >= 2)
+        {
+            var poly = new ScenePolyline { Color = color, Closed = closed };
+            poly.Layer = LegacyLayer(recs, start, hdrEnd);
+            poly.Points.Add(new SKPoint(rawVerts[0].x, rawVerts[0].y));
+
+            int segCount = closed ? rawVerts.Count : rawVerts.Count - 1;
+            for (int k = 0; k < segCount; k++)
+            {
+                var (x1, y1, bulge) = rawVerts[k];
+                var (x2, y2, _)     = rawVerts[(k + 1) % rawVerts.Count];
+
+                if (Math.Abs(bulge) > 1e-9)
+                {
+                    foreach (var bp in BulgePoints(new Vector2(x1, y1), new Vector2(x2, y2), bulge))
+                        poly.Points.Add(new SKPoint((float)bp.X, (float)bp.Y));
+                }
+                else
+                {
+                    poly.Points.Add(new SKPoint(x2, y2));
+                }
+            }
+            if (poly.Points.Count >= 2) scene.Polylines.Add(poly);
+        }
         return i2;
+    }
+
+    private static int LegacyDimension(DxfScene scene, List<GrpRec> recs, int start)
+    {
+        int end = NextCode0(recs, start);
+        string text = "";
+        float dx = 0, dy = 0;   // dimension line definition point (10, 20)
+        float tx = 0, ty = 0;   // text midpoint (11, 21)
+        float e1x = 0, e1y = 0; // extension line 1 origin (13, 23)
+        float e2x = 0, e2y = 0; // extension line 2 origin (14, 24)
+        float angle = 0;         // dimension direction angle (50)
+
+        for (int i = start; i < end; i++)
+            switch (recs[i].Code)
+            {
+                case  1: text  = recs[i].Value;          break;
+                case 10: dx    = ParseF(recs[i].Value);  break;
+                case 20: dy    = ParseF(recs[i].Value);  break;
+                case 11: tx    = ParseF(recs[i].Value);  break;
+                case 21: ty    = ParseF(recs[i].Value);  break;
+                case 13: e1x   = ParseF(recs[i].Value);  break;
+                case 23: e1y   = ParseF(recs[i].Value);  break;
+                case 14: e2x   = ParseF(recs[i].Value);  break;
+                case 24: e2y   = ParseF(recs[i].Value);  break;
+                case 50: angle = ParseF(recs[i].Value);  break;
+            }
+
+        var color = LegacyColor(recs, start, end);
+        var layer = LegacyLayer(recs, start, end);
+        const float tick = 3f;
+        bool vertical = Math.Abs(angle - 90f) < 1f;
+
+        if (vertical)
+        {
+            // Extension lines run horizontally to dim line X
+            scene.Lines.Add(new SceneLine(e1x, e1y, dx, e1y, color) { Layer = layer });
+            scene.Lines.Add(new SceneLine(e2x, e2y, dx, e2y, color) { Layer = layer });
+            // Vertical dim line
+            scene.Lines.Add(new SceneLine(dx, e1y, dx, e2y, color) { Layer = layer });
+            // Arrow ticks
+            scene.Lines.Add(new SceneLine(dx - tick, e1y - tick, dx + tick, e1y + tick, color) { Layer = layer });
+            scene.Lines.Add(new SceneLine(dx - tick, e2y - tick, dx + tick, e2y + tick, color) { Layer = layer });
+        }
+        else
+        {
+            // Extension lines run vertically to dim line Y
+            scene.Lines.Add(new SceneLine(e1x, e1y, e1x, dy, color) { Layer = layer });
+            scene.Lines.Add(new SceneLine(e2x, e2y, e2x, dy, color) { Layer = layer });
+            // Horizontal dim line
+            scene.Lines.Add(new SceneLine(e1x, dy, e2x, dy, color) { Layer = layer });
+            // Arrow ticks
+            scene.Lines.Add(new SceneLine(e1x - tick, dy - tick, e1x + tick, dy + tick, color) { Layer = layer });
+            scene.Lines.Add(new SceneLine(e2x - tick, dy - tick, e2x + tick, dy + tick, color) { Layer = layer });
+        }
+
+        if (!string.IsNullOrEmpty(text))
+            scene.Texts.Add(new SceneText(tx, ty, 12f, angle, DecodeDxfText(text), color) { Layer = layer });
+
+        return end;
     }
 
     private static int LegacyText(DxfScene scene, List<GrpRec> recs, int start)
@@ -505,7 +607,8 @@ public static class DxfParser
                 case  1: value  = DecodeDxfText(recs[i].Value); break;
             }
         if (!string.IsNullOrWhiteSpace(value) && height > 0)
-            scene.Texts.Add(new SceneText(tx, ty, height, rot, value, LegacyColor(recs, start, end)));
+            scene.Texts.Add(new SceneText(tx, ty, height, rot, value, LegacyColor(recs, start, end))
+                { Layer = LegacyLayer(recs, start, end) });
         return end;
     }
 }

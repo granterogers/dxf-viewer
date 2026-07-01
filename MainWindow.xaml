@@ -1,8 +1,8 @@
-<Window x:Class="DxfViewer.MainWindow"
+﻿<Window x:Class="DxfViewer.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:DxfViewer"
-        Title="DXF Viewer v1.0"
+        Title="DXF Viewer v1.2"
         Width="1200" Height="800"
         Background="#1E1E1E"
         AllowDrop="True"
@@ -69,7 +69,7 @@
                          TextTrimming="CharacterEllipsis"/>
               <Button x:Name="CloseBtn"
                       Style="{StaticResource TabCloseButton}"
-                      Content="×"
+                      Content="Ã—"
                       Command="{Binding DataContext.CloseTabCommand,
                                 RelativeSource={RelativeSource AncestorType=TabControl}}"
                       CommandParameter="{Binding}"/>
@@ -95,3 +95,4 @@
     </Grid>
   </DockPanel>
 </Window>
+

@@ -1,4 +1,4 @@
-using SkiaSharp;
+﻿using SkiaSharp;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -13,13 +13,11 @@ public partial class DxfTabControl : UserControl
     private bool _panning;
     private Point _lastMouse;
 
-    // User pan/zoom (applied on top of fit transform)
     private float _zoom = 1f, _panX, _panY;
-
-    // Fit-to-extents base transform (recomputed on FitToWindow / size change)
     private float _fitOffsetX, _fitOffsetY, _fitZoom = 1f;
 
     private WriteableBitmap? _wbm;
+    private bool _layerPanelExpanded = true;
 
     public DxfTabControl()
     {
@@ -29,12 +27,17 @@ public partial class DxfTabControl : UserControl
 
     private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
-        if (_vm != null) _vm.PropertyChanged -= VmPropertyChanged;
+        if (_vm != null)
+        {
+            _vm.PropertyChanged -= VmPropertyChanged;
+            _vm.RenderAction = null;
+        }
         _vm = e.NewValue as DxfTabViewModel;
         if (_vm != null)
         {
             _vm.PropertyChanged += VmPropertyChanged;
-            _vm.FitAction = FitToWindow;
+            _vm.FitAction    = FitToWindow;
+            _vm.RenderAction = () => Dispatcher.Invoke(Render);
             if (_vm.IsLoaded) FitToWindow();
         }
     }
@@ -61,7 +64,7 @@ public partial class DxfTabControl : UserControl
         SkiaImage.Source = _wbm;
 
         if (_vm?.IsLoaded == true)
-            FitToWindow();   // recomputes fit and calls Render
+            FitToWindow();
         else
             Render();
     }
@@ -72,8 +75,7 @@ public partial class DxfTabControl : UserControl
         var bounds = _vm.Scene.Bounds;
         var vw = (float)_wbm.PixelWidth;
         var vh = (float)_wbm.PixelHeight;
-        if (vw <= 0 || vh <= 0) return;
-        if (bounds.Width < 1e-4f || bounds.Height < 1e-4f) return;
+        if (vw <= 0 || vh <= 0 || bounds.Width < 1e-4f || bounds.Height < 1e-4f) return;
 
         _fitZoom    = Math.Min(vw / bounds.Width, vh / bounds.Height) * 0.95f;
         _fitOffsetX = (vw - bounds.Width  * _fitZoom) / 2f - bounds.Left * _fitZoom;
@@ -82,8 +84,6 @@ public partial class DxfTabControl : UserControl
         _panX = _panY = 0f;
         Render();
     }
-
-    // ─── SkiaSharp render into WriteableBitmap ────────────────────────────────
 
     private void Render()
     {
@@ -97,15 +97,24 @@ public partial class DxfTabControl : UserControl
                 SKColorType.Bgra8888, SKAlphaType.Premul);
             using var surface = SKSurface.Create(info, wbm.BackBuffer, wbm.BackBufferStride);
             var canvas = surface.Canvas;
-            canvas.Clear(new SKColor(18, 18, 30)); // #12121E
+            canvas.Clear(new SKColor(18, 18, 30));
 
             if (_vm?.Scene != null && _vm.IsLoaded)
             {
+                // Build visible-layer set (null = show all when no layer info)
+                HashSet<string>? visibleLayers = null;
+                if (_vm.Layers.Count > 0)
+                    visibleLayers = _vm.Layers
+                        .Where(l => l.IsVisible)
+                        .Select(l => l.Name)
+                        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
                 canvas.Save();
                 canvas.Translate(_panX, _panY);
                 canvas.Scale(_zoom);
                 canvas.Translate(_fitOffsetX, _fitOffsetY);
-                DrawScene(canvas, _vm.Scene);
+                canvas.Scale(_fitZoom);          // apply fit scale so DXF units map to screen pixels
+                DrawScene(canvas, _vm.Scene, visibleLayers);
                 canvas.Restore();
             }
         }
@@ -116,7 +125,7 @@ public partial class DxfTabControl : UserControl
         }
     }
 
-    private static void DrawScene(SKCanvas canvas, DxfScene scene)
+    private static void DrawScene(SKCanvas canvas, DxfScene scene, HashSet<string>? vis)
     {
         using var paint = new SKPaint
         {
@@ -127,15 +136,16 @@ public partial class DxfTabControl : UserControl
 
         foreach (var c in scene.Circles)
         {
+            if (vis != null && !vis.Contains(c.Layer)) continue;
             paint.Color = c.Color;
             canvas.DrawCircle(c.Cx, -c.Cy, c.R, paint);
         }
 
         foreach (var a in scene.Arcs)
         {
+            if (vis != null && !vis.Contains(a.Layer)) continue;
             paint.Color = a.Color;
             var oval = new SKRect(a.Cx - a.R, -a.Cy - a.R, a.Cx + a.R, -a.Cy + a.R);
-            // DXF CCW angles → negate for screen CW after Y-flip
             float span = a.EndDeg > a.StartDeg
                 ? a.EndDeg - a.StartDeg
                 : 360f - a.StartDeg + a.EndDeg;
@@ -144,6 +154,7 @@ public partial class DxfTabControl : UserControl
 
         foreach (var l in scene.Lines)
         {
+            if (vis != null && !vis.Contains(l.Layer)) continue;
             paint.Color = l.Color;
             canvas.DrawLine(l.X1, -l.Y1, l.X2, -l.Y2, paint);
         }
@@ -151,6 +162,7 @@ public partial class DxfTabControl : UserControl
         foreach (var p in scene.Polylines)
         {
             if (p.Points.Count < 2) continue;
+            if (vis != null && !vis.Contains(p.Layer)) continue;
             paint.Color = p.Color;
             using var path = new SKPath();
             path.MoveTo(p.Points[0].X, -p.Points[0].Y);
@@ -160,37 +172,67 @@ public partial class DxfTabControl : UserControl
             canvas.DrawPath(path, paint);
         }
 
-        DrawTexts(canvas, scene);
+        DrawTexts(canvas, scene, vis);
     }
 
-    private static void DrawTexts(SKCanvas canvas, DxfScene scene)
+    private static void DrawTexts(SKCanvas canvas, DxfScene scene, HashSet<string>? vis)
     {
         if (scene.Texts.Count == 0) return;
         var tf = SKTypeface.FromFamilyName("Segoe UI");
+
+        // Placed text positions for collision avoidance (in DXF coords)
+        var placed = new List<(float x, float y, float sz)>();
+
         foreach (var t in scene.Texts)
         {
             if (string.IsNullOrEmpty(t.Value)) continue;
+            if (vis != null && !vis.Contains(t.Layer)) continue;
+
             float sz = t.Height > 0f ? t.Height : 2.5f;
+            float ax = t.X, ay = t.Y;
+            bool isVert = MathF.Abs(t.Rotation - 90f) < 1f;
+
+            // Greedy collision avoidance: offset if too close to an already-placed label
+            foreach (var (px, py, ps) in placed)
+            {
+                float thresh = (sz + ps) * 0.75f;
+                if (MathF.Sqrt(MathF.Pow(ax - px, 2) + MathF.Pow(ay - py, 2)) < thresh)
+                {
+                    if (isVert) ax += sz * 1.2f;
+                    else        ay -= sz * 1.2f;
+                    break;
+                }
+            }
+            placed.Add((ax, ay, sz));
+
             using var textPaint = new SKPaint
             {
                 IsAntialias = true,
-                Color = t.Color,
-                TextSize = sz,
-                Typeface = tf,
+                Color       = t.Color,
+                TextSize    = sz,
+                Typeface    = tf,
             };
             canvas.Save();
-            canvas.Translate(t.X, -t.Y);
-            // DXF CCW rotation → CW after Y-flip; RotateDegrees(+θ)=CW, so negate
-            if (Math.Abs(t.Rotation) > 0.01f)
-                canvas.RotateDegrees(-(float)t.Rotation);
-            // Baseline at (0,0); ascenders toward -Y = upward in screen = DXF up ✓
+            canvas.Translate(ax, -ay);
+            if (MathF.Abs(t.Rotation) > 0.01f)
+                canvas.RotateDegrees(-t.Rotation);
             canvas.DrawText(t.Value, 0f, 0f, textPaint);
             canvas.Restore();
         }
         tf?.Dispose();
     }
 
-    // ─── Pan & Zoom ──────────────────────────────────────────────────────────
+    // --- Layer panel toggle ---
+
+    private void LayerToggle_Click(object sender, RoutedEventArgs e)
+    {
+        _layerPanelExpanded = !_layerPanelExpanded;
+        LayerPanelCol.Width   = new GridLength(_layerPanelExpanded ? 200 : 20);
+        LayerPanelBody.Visibility = _layerPanelExpanded ? Visibility.Visible : Visibility.Collapsed;
+        LayerToggleBtn.Content    = _layerPanelExpanded ? "◄" : "►";
+    }
+
+    // --- Pan & Zoom ---
 
     private void Canvas_MouseDown(object sender, MouseButtonEventArgs e)
     {
@@ -222,7 +264,6 @@ public partial class DxfTabControl : UserControl
         float cx = (float)p.X, cy = (float)p.Y;
         float factor = e.Delta > 0 ? 1.12f : 1f / 1.12f;
 
-        // Zoom centered on cursor: new_pan = cursor + (pan - cursor) * factor
         _panX = cx + (_panX - cx) * factor;
         _panY = cy + (_panY - cy) * factor;
         _zoom *= factor;

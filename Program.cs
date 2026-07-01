@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using SkiaSharp;
 
 namespace DxfViewer;
@@ -56,8 +56,10 @@ public static class Program
             int lines     = scene.Lines.Count;
             int polylines = scene.Polylines.Count;
             int texts     = scene.Texts.Count;
-            Console.WriteLine($"OK: {Path.GetFileName(dxfPath)} → {outputPath}  " +
-                $"[C:{circles} A:{arcs} L:{lines} P:{polylines} T:{texts}]");
+            var b = scene.Bounds;
+            Console.WriteLine($"OK: {Path.GetFileName(dxfPath)} -> {outputPath}  " +
+                $"[C:{circles} A:{arcs} L:{lines} P:{polylines} T:{texts}]  " +
+                $"bounds=[{b.Left:F1},{b.Top:F1},{b.Right:F1},{b.Bottom:F1}]");
             return 0;
         }
         catch (Exception ex)
@@ -108,10 +110,24 @@ public static class Program
         if (scene.Texts.Count > 0)
         {
             var tf = SKTypeface.FromFamilyName("Segoe UI");
+            var placed = new List<(float x, float y, float sz)>();
             foreach (var t in scene.Texts)
             {
                 if (string.IsNullOrEmpty(t.Value)) continue;
                 float sz = t.Height > 0f ? t.Height : 2.5f;
+                float ax = t.X, ay = t.Y;
+                bool isVert = MathF.Abs(t.Rotation - 90f) < 1f;
+                foreach (var (px, py, ps) in placed)
+                {
+                    float thresh = (sz + ps) * 0.75f;
+                    if (MathF.Sqrt(MathF.Pow(ax - px, 2) + MathF.Pow(ay - py, 2)) < thresh)
+                    {
+                        if (isVert) ax += sz * 1.2f;
+                        else        ay -= sz * 1.2f;
+                        break;
+                    }
+                }
+                placed.Add((ax, ay, sz));
                 using var textPaint = new SKPaint
                 {
                     IsAntialias = true,
@@ -120,9 +136,9 @@ public static class Program
                     Typeface = tf,
                 };
                 canvas.Save();
-                canvas.Translate(t.X, -t.Y);
-                if (Math.Abs(t.Rotation) > 0.01f)
-                    canvas.RotateDegrees(-(float)t.Rotation);
+                canvas.Translate(ax, -ay);
+                if (MathF.Abs(t.Rotation) > 0.01f)
+                    canvas.RotateDegrees(-t.Rotation);
                 canvas.DrawText(t.Value, 0, 0, textPaint);
                 canvas.Restore();
             }
