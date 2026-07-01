@@ -1,0 +1,97 @@
+<Window x:Class="DxfViewer.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:DxfViewer"
+        Title="DXF Viewer v1.0"
+        Width="1200" Height="800"
+        Background="#1E1E1E"
+        AllowDrop="True"
+        Topmost="{Binding AlwaysOnTop}">
+
+  <Window.InputBindings>
+    <KeyBinding Key="O" Modifiers="Ctrl" Command="{Binding OpenFileCommand}"/>
+    <KeyBinding Key="W" Modifiers="Ctrl" Command="{Binding CloseTabCommand}"/>
+    <KeyBinding Key="Tab" Modifiers="Ctrl" Command="{Binding NextTabCommand}"/>
+    <KeyBinding Key="Tab" Modifiers="Ctrl+Shift" Command="{Binding PrevTabCommand}"/>
+  </Window.InputBindings>
+
+  <DockPanel>
+    <!-- Toolbar -->
+    <Border DockPanel.Dock="Top" Background="#2D2D2D" BorderBrush="#444" BorderThickness="0,0,0,1">
+      <StackPanel Orientation="Horizontal" Margin="6,4">
+        <Button Content="Open File" Command="{Binding OpenFileCommand}"
+                Padding="8,3" Margin="0,0,4,0"
+                Background="#3C3C3C" Foreground="#DDD"
+                BorderBrush="#555" BorderThickness="1"/>
+        <Button Content="Fit (F)" Command="{Binding FitCommand}"
+                Padding="8,3" Margin="0,0,4,0"
+                Background="#3C3C3C" Foreground="#DDD"
+                BorderBrush="#555" BorderThickness="1"/>
+        <ToggleButton Content="Pin" Command="{Binding ToggleAlwaysOnTopCommand}"
+                      IsChecked="{Binding AlwaysOnTop, Mode=OneWay}"
+                      Padding="8,3" Margin="0,0,4,0"
+                      Background="#3C3C3C" Foreground="#DDD"
+                      BorderBrush="#555" BorderThickness="1"
+                      ToolTip="Always on top"/>
+      </StackPanel>
+    </Border>
+
+    <!-- Main content area -->
+    <Grid>
+      <!-- Empty state -->
+      <StackPanel x:Name="EmptyState"
+                  VerticalAlignment="Center" HorizontalAlignment="Center"
+                  Visibility="{Binding EmptyStateVisibility}">
+        <TextBlock Text="No files open"
+                   FontSize="22" FontWeight="Light"
+                   Foreground="#555" HorizontalAlignment="Center"/>
+        <TextBlock Text="Drag a DXF file here or press Ctrl+O to open one"
+                   FontSize="14" Foreground="#444"
+                   HorizontalAlignment="Center" Margin="0,8,0,0"/>
+      </StackPanel>
+
+      <!-- Tab control -->
+      <TabControl x:Name="MainTabControl"
+                  Visibility="{Binding TabsVisibility}"
+                  VerticalContentAlignment="Stretch"
+                  HorizontalContentAlignment="Stretch"
+                  ItemsSource="{Binding Tabs}"
+                  SelectedItem="{Binding ActiveTab}">
+        <TabControl.ItemTemplate>
+          <DataTemplate DataType="{x:Type local:DxfTabViewModel}">
+            <StackPanel x:Name="TabHeader" Orientation="Horizontal" VerticalAlignment="Center">
+              <TextBlock x:Name="TabTitle"
+                         Text="{Binding Title}"
+                         FontFamily="Segoe UI" FontSize="12"
+                         VerticalAlignment="Center"
+                         Foreground="#9090A0"
+                         MaxWidth="180"
+                         TextTrimming="CharacterEllipsis"/>
+              <Button x:Name="CloseBtn"
+                      Style="{StaticResource TabCloseButton}"
+                      Content="×"
+                      Command="{Binding DataContext.CloseTabCommand,
+                                RelativeSource={RelativeSource AncestorType=TabControl}}"
+                      CommandParameter="{Binding}"/>
+            </StackPanel>
+            <DataTemplate.Triggers>
+              <!-- Active tab: white title text -->
+              <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=TabItem}}" Value="True">
+                <Setter TargetName="TabTitle" Property="Foreground" Value="#FFFFFF"/>
+              </DataTrigger>
+              <!-- Show close button on any TabItem hover -->
+              <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=TabItem}}" Value="True">
+                <Setter TargetName="CloseBtn" Property="Opacity" Value="1"/>
+              </DataTrigger>
+            </DataTemplate.Triggers>
+          </DataTemplate>
+        </TabControl.ItemTemplate>
+        <TabControl.ContentTemplate>
+          <DataTemplate DataType="{x:Type local:DxfTabViewModel}">
+            <local:DxfTabControl/>
+          </DataTemplate>
+        </TabControl.ContentTemplate>
+      </TabControl>
+    </Grid>
+  </DockPanel>
+</Window>

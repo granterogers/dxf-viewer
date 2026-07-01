@@ -1,0 +1,39 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Publish
+        run: >
+          dotnet publish -c Release -r win-x64
+          --self-contained false
+          -p:PublishSingleFile=true
+          -o ./publish
+
+      - name: Zip artifact
+        run: Compress-Archive -Path ./publish/* -DestinationPath DxfViewer-${{ github.ref_name }}.zip
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: DxfViewer-${{ github.ref_name }}.zip
+          generate_release_notes: true
