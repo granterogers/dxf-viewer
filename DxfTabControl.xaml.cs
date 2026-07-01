@@ -236,7 +236,7 @@ public partial class DxfTabControl : UserControl
 
     private void Canvas_MouseDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.LeftButton != MouseButtonState.Pressed) return;
+        if (e.LeftButton != MouseButtonState.Pressed && e.MiddleButton != MouseButtonState.Pressed) return;
         _panning = true;
         _lastMouse = e.GetPosition(SkiaHost);
         SkiaHost.CaptureMouse();
