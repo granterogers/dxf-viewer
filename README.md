@@ -2,7 +2,7 @@
 
 A fast, lightweight Windows DXF file viewer built with .NET 8, WPF, and SkiaSharp.
 
-[![Build](https://github.com/USERNAME/dxf-viewer/actions/workflows/build.yml/badge.svg)](https://github.com/USERNAME/dxf-viewer/actions/workflows/build.yml)
+[![Build](https://github.com/granterogers/dxf-viewer/actions/workflows/build.yml/badge.svg)](https://github.com/granterogers/dxf-viewer/actions/workflows/build.yml)
 
 ## Features
 
@@ -35,7 +35,7 @@ Download the latest `DxfViewer-vX.Y.zip` from the [Releases](../../releases) pag
 ### Option 2 — Build from source
 
 ```bash
-git clone https://github.com/USERNAME/dxf-viewer.git
+git clone https://github.com/granterogers/dxf-viewer.git
 cd dxf-viewer
 dotnet restore
 dotnet build -c Release
