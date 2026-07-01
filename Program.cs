@@ -11,9 +11,14 @@ public static class Program
         if (args.Length == 3 && args[0] == "--render-test")
             return RunRenderTest(args[1], args[2]);
 
+        string? initialFile = args.Length >= 1 && File.Exists(args[0]) ? args[0] : null;
+
         var app = new App();
         app.InitializeComponent();
-        app.Run(new MainWindow());
+        var window = new MainWindow();
+        if (initialFile != null)
+            window.Loaded += (_, _) => (window.DataContext as MainViewModel)?.TryOpenFile(initialFile);
+        app.Run(window);
         return 0;
     }
 
