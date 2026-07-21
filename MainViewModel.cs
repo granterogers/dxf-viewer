@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Windows;
@@ -34,6 +35,9 @@ public class MainViewModel : INotifyPropertyChanged
     public ICommand PrevTabCommand { get; }
     public ICommand FitCommand { get; }
     public ICommand ToggleAlwaysOnTopCommand { get; }
+    public ICommand NavPrevCommand { get; }
+    public ICommand NavNextCommand { get; }
+    public ICommand OpenWithMicrovellumCommand { get; }
 
     public MainViewModel()
     {
@@ -43,6 +47,9 @@ public class MainViewModel : INotifyPropertyChanged
         PrevTabCommand = new RelayCommand(_ => CycleTab(-1));
         FitCommand = new RelayCommand(_ => ActiveTab?.FitToWindow());
         ToggleAlwaysOnTopCommand = new RelayCommand(_ => AlwaysOnTop = !AlwaysOnTop);
+        NavPrevCommand = new RelayCommand(_ => ActiveTab?.NavigatePrev(), _ => ActiveTab != null);
+        NavNextCommand = new RelayCommand(_ => ActiveTab?.NavigateNext(), _ => ActiveTab != null);
+        OpenWithMicrovellumCommand = new RelayCommand(_ => OpenWithMicrovellum(), _ => ActiveTab?.IsLoaded == true);
     }
 
     private void OpenFile()
@@ -62,12 +69,45 @@ public class MainViewModel : INotifyPropertyChanged
         if (!string.IsNullOrEmpty(dir)) AppSettings.LastOpenedDirectory = dir;
     }
 
+    private void OpenWithMicrovellum()
+    {
+        var exePath = AppSettings.MicrovellumExePath;
+        if (string.IsNullOrEmpty(exePath) || !File.Exists(exePath))
+        {
+            var dlg = new Microsoft.Win32.OpenFileDialog
+            {
+                Title = "Locate Microvellum Application",
+                Filter = "Executables (*.exe)|*.exe|All Files (*.*)|*.*",
+                InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles)
+            };
+            if (dlg.ShowDialog() != true) return;
+            exePath = dlg.FileName;
+            AppSettings.MicrovellumExePath = exePath;
+        }
+
+        var filePath = ActiveTab?.FilePath;
+        if (string.IsNullOrEmpty(filePath)) return;
+
+        try
+        {
+            Process.Start(new ProcessStartInfo(exePath)
+            {
+                Arguments = $"\"{filePath}\"",
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Failed to launch Microvellum:\n{ex.Message}",
+                "Launch Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
     public void TryOpenFile(string path)
     {
         if (!File.Exists(path)) return;
         if (!path.EndsWith(".dxf", StringComparison.OrdinalIgnoreCase)) return;
 
-        // Switch to existing tab if already open
         var existing = Tabs.FirstOrDefault(t => t.FilePath.Equals(path, StringComparison.OrdinalIgnoreCase));
         if (existing != null) { ActiveTab = existing; return; }
 

@@ -18,6 +18,7 @@ public partial class MainWindow : Window
         DragOver += OnDragOver;
 
         PreviewKeyDown += OnPreviewKeyDown;
+        Loaded += (_, _) => Focus();
     }
 
     private void OnDragOver(object sender, DragEventArgs e)
