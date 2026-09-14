@@ -37,7 +37,32 @@ public class DxfTabViewModel : INotifyPropertyChanged
         private set { _errorMessage = value; OnPropertyChanged(); }
     }
 
-    public DxfScene? Scene { get; private set; }
+    public List<DxfPage> Pages { get; private set; } = new();
+    public System.Collections.ObjectModel.ObservableCollection<string> PageNames { get; } = new();
+    public bool HasMultiplePages => Pages.Count > 1;
+
+    private int _currentPageIndex;
+    public int CurrentPageIndex
+    {
+        get => _currentPageIndex;
+        set
+        {
+            if (Pages.Count == 0) return;
+            var clamped = Math.Clamp(value, 0, Pages.Count - 1);
+            if (clamped == _currentPageIndex) return;
+            _currentPageIndex = clamped;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(Scene));
+            OnPropertyChanged(nameof(IsScene3D));
+            RefreshLayersFromScene();
+            FitAction?.Invoke();
+            RenderAction?.Invoke();
+        }
+    }
+
+    public DxfScene? Scene => _currentPageIndex >= 0 && _currentPageIndex < Pages.Count
+        ? Pages[_currentPageIndex].Scene : null;
+    public bool IsScene3D => Scene?.Is3D == true;
 
     public System.Collections.ObjectModel.ObservableCollection<LayerInfo> Layers { get; } = new();
     public Action? RenderAction { get; set; }
@@ -72,6 +97,7 @@ public class DxfTabViewModel : INotifyPropertyChanged
         try
         {
             _dirFiles = Directory.GetFiles(dir, "*.dxf", SearchOption.TopDirectoryOnly)
+                .Concat(Directory.GetFiles(dir, "*.dwg", SearchOption.TopDirectoryOnly))
                 .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
                 .ToList();
         }
@@ -86,20 +112,25 @@ public class DxfTabViewModel : INotifyPropertyChanged
     private async void LoadFile(string path)
     {
         State = TabState.Loading;
-        Scene = null;
+        Pages = new();
+        _currentPageIndex = 0;
         ErrorMessage = "";
 
         try
         {
-            var scene = await Task.Run(() => DxfParser.Parse(path));
-            Scene = scene;
-            Layers.Clear();
-            foreach (var (name, color) in scene.Layers)
-            {
-                var info = new LayerInfo(name, color);
-                info.PropertyChanged += (_, _) => RenderAction?.Invoke();
-                Layers.Add(info);
-            }
+            var pages = await Task.Run(() => path.EndsWith(".dwg", StringComparison.OrdinalIgnoreCase)
+                ? DwgParser.Parse(path)
+                : DxfParser.Parse(path));
+            Pages = pages;
+            _currentPageIndex = 0;
+            PageNames.Clear();
+            foreach (var p in pages) PageNames.Add(p.Name);
+            OnPropertyChanged(nameof(Pages));
+            OnPropertyChanged(nameof(HasMultiplePages));
+            OnPropertyChanged(nameof(CurrentPageIndex));
+            OnPropertyChanged(nameof(Scene));
+            OnPropertyChanged(nameof(IsScene3D));
+            RefreshLayersFromScene();
             State = TabState.Loaded;
             FitAction?.Invoke();
         }
@@ -107,6 +138,18 @@ public class DxfTabViewModel : INotifyPropertyChanged
         {
             ErrorMessage = ex.Message;
             State = TabState.Error;
+        }
+    }
+
+    private void RefreshLayersFromScene()
+    {
+        Layers.Clear();
+        if (Scene == null) return;
+        foreach (var (name, color) in Scene.Layers)
+        {
+            var info = new LayerInfo(name, color);
+            info.PropertyChanged += (_, _) => RenderAction?.Invoke();
+            Layers.Add(info);
         }
     }
 

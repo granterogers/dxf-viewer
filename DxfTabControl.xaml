@@ -4,8 +4,26 @@
              xmlns:local="clr-namespace:DxfViewer"
              Background="#12121E">
 
-  <!-- Content row: canvas + layer panel side by side -->
   <Grid>
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+    </Grid.RowDefinitions>
+
+    <!-- Page (Layout) selector, shown only for documents with more than one page -->
+    <Border Grid.Row="0" Background="#1E1E30" BorderBrush="#303048" BorderThickness="0,0,0,1"
+            Visibility="{Binding HasMultiplePages, Converter={StaticResource BoolToVisibility}}">
+      <StackPanel Orientation="Horizontal" Margin="8,4,8,4">
+        <TextBlock Text="Page" Foreground="#9090A0" FontSize="11" FontFamily="Segoe UI"
+                   VerticalAlignment="Center" Margin="0,0,6,0"/>
+        <ComboBox ItemsSource="{Binding PageNames}"
+                  SelectedIndex="{Binding CurrentPageIndex, Mode=TwoWay}"
+                  Width="180" FontSize="11" FontFamily="Segoe UI"/>
+      </StackPanel>
+    </Border>
+
+    <!-- Content row: canvas + layer panel side by side -->
+    <Grid Grid.Row="1">
     <Grid.ColumnDefinitions>
       <ColumnDefinition Width="*"/>
       <ColumnDefinition x:Name="LayerPanelCol" Width="200"/>
@@ -39,6 +57,11 @@
           MouseWheel="Canvas_MouseWheel"
           Focusable="True">
       <Image x:Name="SkiaImage" Stretch="Fill"/>
+      <TextBlock Text="3D — drag to rotate · middle-drag to pan · wheel to zoom"
+                 Visibility="{Binding IsScene3D, Converter={StaticResource BoolToVisibility}}"
+                 Foreground="#9090A0" FontSize="11" FontFamily="Segoe UI"
+                 HorizontalAlignment="Left" VerticalAlignment="Top"
+                 Margin="10,8,0,0" IsHitTestVisible="False"/>
     </Grid>
 
     <!-- Layers panel -->
@@ -131,5 +154,6 @@
         </Grid>
       </DockPanel>
     </Border>
+    </Grid>
   </Grid>
 </UserControl>

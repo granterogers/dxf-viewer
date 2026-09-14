@@ -7,8 +7,10 @@ A fast, lightweight Windows DXF file viewer built with .NET 8, WPF, and SkiaShar
 ## Features
 
 - **Dark theme** — dark navy UI designed for reading engineering drawings
-- **Tabbed viewing** — open multiple DXF files side by side with close buttons
-- **Drag and drop** — drop any `.dxf` file onto the window to open it
+- **DXF and DWG** — native support for both, no external converter or separate install required
+- **Tabbed viewing** — open multiple files side by side with close buttons
+- **Drag and drop** — drop any `.dxf` or `.dwg` file onto the window to open it
+- **Multi-page DWG** — Paper Space layout tabs are composited (viewport-clipped, scaled crops of Model Space) and selectable from a page dropdown
 - **Smooth pan & zoom** — mouse-wheel zoom centred on cursor, click-drag to pan
 - **Fit to window** — press `F` to fit the drawing to the viewport instantly
 - **Directory navigation** — step through all DXF files in a folder with `◀` / `▶` or arrow keys
@@ -71,12 +73,16 @@ The executable is at `bin/Release/net8.0-windows/DxfViewer.exe`.
 | `ELLIPSE` | Discretised to polyline |
 | `SPLINE` | Approximated via control polygon |
 | `INSERT` | Block references flattened with scale/rotate |
+| `3DSOLID` (DWG only) | Legacy wireframe edges rendered with a true orbit camera — drag to rotate, wheel to zoom, middle-drag to pan; orthographic, no hidden-line removal |
 
 Files without a `$ACADVER` header (pre-R12 / legacy format) are parsed with a built-in fallback reader.
 
+`.dwg` files are read natively via [ACadSharp](https://github.com/DomCR/ACadSharp) — entirely in-process,
+no external converter or separate install needed.
+
 ## Roadmap
 
-- [ ] DWG support via ODA File Converter
+- [x] DWG support (native, via ACadSharp)
 - [ ] Print / export to PDF or PNG
 - [ ] Layer visibility toggle
 - [ ] Measurement tool

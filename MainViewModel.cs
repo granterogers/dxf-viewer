@@ -29,6 +29,20 @@ public class MainViewModel : INotifyPropertyChanged
         set { _alwaysOnTop = value; OnPropertyChanged(); }
     }
 
+    private double _volume = AppSettings.Volume;
+    public double Volume
+    {
+        get => _volume;
+        set { _volume = value; AppSettings.Volume = value; OnPropertyChanged(); }
+    }
+
+    private bool _muted = AppSettings.Muted;
+    public bool Muted
+    {
+        get => _muted;
+        set { _muted = value; AppSettings.Muted = value; OnPropertyChanged(); }
+    }
+
     public ICommand OpenFileCommand { get; }
     public ICommand CloseTabCommand { get; }
     public ICommand NextTabCommand { get; }
@@ -38,6 +52,7 @@ public class MainViewModel : INotifyPropertyChanged
     public ICommand NavPrevCommand { get; }
     public ICommand NavNextCommand { get; }
     public ICommand OpenWithMicrovellumCommand { get; }
+    public ICommand ToggleMuteCommand { get; }
 
     public MainViewModel()
     {
@@ -50,13 +65,14 @@ public class MainViewModel : INotifyPropertyChanged
         NavPrevCommand = new RelayCommand(_ => ActiveTab?.NavigatePrev(), _ => ActiveTab != null);
         NavNextCommand = new RelayCommand(_ => ActiveTab?.NavigateNext(), _ => ActiveTab != null);
         OpenWithMicrovellumCommand = new RelayCommand(_ => OpenWithMicrovellum(), _ => ActiveTab?.IsLoaded == true);
+        ToggleMuteCommand = new RelayCommand(_ => Muted = !Muted);
     }
 
     private void OpenFile()
     {
         var dlg = new Microsoft.Win32.OpenFileDialog
         {
-            Filter = "DXF Files (*.dxf)|*.dxf|All Files (*.*)|*.*",
+            Filter = "CAD Files (*.dxf;*.dwg)|*.dxf;*.dwg|DXF Files (*.dxf)|*.dxf|DWG Files (*.dwg)|*.dwg|All Files (*.*)|*.*",
             Multiselect = true
         };
         var last = AppSettings.LastOpenedDirectory;
@@ -99,14 +115,15 @@ public class MainViewModel : INotifyPropertyChanged
         catch (Exception ex)
         {
             MessageBox.Show($"Failed to launch Microvellum:\n{ex.Message}",
-                "Launch Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                "Launch Error", MessageBoxButton.OK, Muted ? MessageBoxImage.None : MessageBoxImage.Error);
         }
     }
 
     public void TryOpenFile(string path)
     {
         if (!File.Exists(path)) return;
-        if (!path.EndsWith(".dxf", StringComparison.OrdinalIgnoreCase)) return;
+        if (!path.EndsWith(".dxf", StringComparison.OrdinalIgnoreCase) &&
+            !path.EndsWith(".dwg", StringComparison.OrdinalIgnoreCase)) return;
 
         var existing = Tabs.FirstOrDefault(t => t.FilePath.Equals(path, StringComparison.OrdinalIgnoreCase));
         if (existing != null) { ActiveTab = existing; return; }

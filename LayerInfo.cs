@@ -10,7 +10,7 @@ public class LayerInfo : INotifyPropertyChanged
     public string Name       { get; }
     public Brush  ColorBrush { get; }
 
-    private bool _isVisible = true;
+    private bool _isVisible;
     public bool IsVisible
     {
         get => _isVisible;
@@ -21,7 +21,14 @@ public class LayerInfo : INotifyPropertyChanged
     {
         Name = name;
         ColorBrush = new SolidColorBrush(Color.FromRgb(color.Red, color.Green, color.Blue));
+        _isVisible = DefaultVisible(name);
     }
+
+    // Every layer, including ROUTE_* (CNC toolpath/routing annotations), starts visible --
+    // matching Microvellum's own viewer, which shows them by default. Still toggleable
+    // from the layer panel. Kept as a hook (shared with Program.cs's --render-test
+    // harness) in case a future layer category needs a different default.
+    public static bool DefaultVisible(string name) => true;
 
     public event PropertyChangedEventHandler? PropertyChanged;
     private void OnPropertyChanged([CallerMemberName] string? n = null) =>

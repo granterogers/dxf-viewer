@@ -9,15 +9,15 @@ namespace DxfViewer;
 
 public static class DxfParser
 {
-    private const double ArcDegreesPerSeg = 0.5;
+    public static List<DxfPage> Parse(string filePath) => new() { new DxfPage("Model", ParseScene(filePath)) };
 
-    public static DxfScene Parse(string filePath)
+    private static DxfScene ParseScene(string filePath)
     {
         // Try netDxf first -- handles modern DXF with a $ACADVER header.
         try
         {
             DxfDocument doc;
-            using (var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read))
+            using (var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
                 doc = DxfDocument.Load(fs);
 
             if (HasAnyEntities(doc))
@@ -136,7 +136,7 @@ public static class DxfParser
         double endRad = e.EndAngle * Math.PI / 180;
         if (endRad <= startRad) endRad += 2 * Math.PI;
         double span = isArc ? endRad - startRad : 2 * Math.PI;
-        int segs = Math.Max(16, (int)(span * 180 / Math.PI / ArcDegreesPerSeg));
+        int segs = Math.Max(16, (int)(span * 180 / Math.PI / CadGeometry.ArcDegreesPerSeg));
 
         var poly = new ScenePolyline { Closed = !isArc, Color = ResolveColor(e, bl) };
         poly.Layer = LayerOf(e);
@@ -168,8 +168,11 @@ public static class DxfParser
 
             if (Math.Abs(verts[i].Bulge) > 1e-9)
             {
-                foreach (var bp in BulgePoints(verts[i].Position, verts[ni].Position, verts[i].Bulge))
-                    AddVertRaw(bp);
+                foreach (var bp in CadGeometry.BulgePoints(
+                    (verts[i].Position.X, verts[i].Position.Y),
+                    (verts[ni].Position.X, verts[ni].Position.Y),
+                    verts[i].Bulge))
+                    AddVertRaw(new Vector2(bp.X, bp.Y));
             }
         }
         if (!e.IsClosed && verts.Count > 0) AddVert(verts[^1].Position);
@@ -184,28 +187,6 @@ public static class DxfParser
         {
             var v3 = xf.HasValue ? ApplyXform(new Vector3(p2.X, p2.Y, 0), xf.Value) : new Vector3(p2.X, p2.Y, 0);
             poly.Points.Add(new SKPoint((float)v3.X, (float)v3.Y));
-        }
-    }
-
-    private static IEnumerable<Vector2> BulgePoints(Vector2 from, Vector2 to, double bulge)
-    {
-        double angle = 4.0 * Math.Atan(Math.Abs(bulge));
-        int segs = Math.Max(4, (int)(angle * 180 / Math.PI / ArcDegreesPerSeg));
-        double totalAngle = bulge >= 0 ? angle : -angle;
-
-        double dx = to.X - from.X, dy = to.Y - from.Y;
-        double d = Math.Sqrt(dx * dx + dy * dy);
-        if (d < 1e-12) yield break;
-        double r = d / (2 * Math.Sin(totalAngle / 2));
-        double mid = Math.Cos(totalAngle / 2);
-        double cx = (from.X + to.X) / 2 - r * mid * dy / d;
-        double cy = (from.Y + to.Y) / 2 + r * mid * dx / d;
-        double startAngle = Math.Atan2(from.Y - cy, from.X - cx);
-        double step = totalAngle / segs;
-        for (int i = 1; i <= segs; i++)
-        {
-            double a = startAngle + i * step;
-            yield return new Vector2(cx + r * Math.Cos(a), cy + r * Math.Sin(a));
         }
     }
 
@@ -242,51 +223,18 @@ public static class DxfParser
         scene.Texts.Add(new SceneText(
             (float)e.Position.X, (float)e.Position.Y,
             (float)h, (float)e.Rotation,
-            DecodeDxfText(e.Value), ResolveColor(e, bl)) { Layer = LayerOf(e) });
+            CadGeometry.DecodeDxfText(e.Value), ResolveColor(e, bl)) { Layer = LayerOf(e) });
     }
 
     private static void AddMText(DxfScene scene, MText e, Layer? bl)
     {
-        var raw = DecodeDxfText(e.PlainText());
+        var raw = CadGeometry.DecodeDxfText(e.PlainText());
         if (string.IsNullOrWhiteSpace(raw)) return;
         double h = e.Height > 0 ? e.Height : 2.5;
         scene.Texts.Add(new SceneText(
             (float)e.Position.X, (float)e.Position.Y,
             (float)h, (float)e.Rotation,
             raw, ResolveColor(e, bl)) { Layer = LayerOf(e) });
-    }
-
-    private static string DecodeDxfText(string s)
-    {
-        if (!s.Contains("%%")) return s;
-        var sb = new System.Text.StringBuilder(s.Length);
-        int i = 0;
-        while (i < s.Length)
-        {
-            if (s[i] == '%' && i + 1 < s.Length && s[i + 1] == '%' && i + 2 < s.Length)
-            {
-                char c = s[i + 2];
-                switch (char.ToLower(c))
-                {
-                    case 'c': sb.Append('∅'); i += 3; break; // diameter
-                    case 'd': sb.Append('°'); i += 3; break; // degree
-                    case 'p': sb.Append('±'); i += 3; break; // plus-minus
-                    case 'u': case 'o': i += 3; break;            // toggle, skip
-                    default:
-                        if (char.IsDigit(c) && i + 4 < s.Length &&
-                            char.IsDigit(s[i + 3]) && char.IsDigit(s[i + 4]))
-                        {
-                            int code = (c - '0') * 100 + (s[i + 3] - '0') * 10 + (s[i + 4] - '0');
-                            sb.Append((char)code);
-                            i += 5;
-                        }
-                        else { sb.Append('%'); i++; }
-                        break;
-                }
-            }
-            else { sb.Append(s[i++]); }
-        }
-        return sb.ToString();
     }
 
     // --- Color resolution ---
@@ -298,33 +246,7 @@ public static class DxfParser
         if (aci.IsByLayer) aci = entity.Layer?.Color ?? AciColor.Default;
         if (aci.IsByLayer || aci.IsByBlock) return new SKColor(255, 255, 255);
         if (aci.UseTrueColor) return new SKColor(aci.R, aci.G, aci.B);
-        return AciIndexToSKColor(aci.Index);
-    }
-
-    private static SKColor AciIndexToSKColor(short idx) => idx switch
-    {
-        1  => new SKColor(255,   0,   0),
-        2  => new SKColor(255, 255,   0),
-        3  => new SKColor(  0, 255,   0),
-        4  => new SKColor(  0, 255, 255),
-        5  => new SKColor(  0,   0, 255),
-        6  => new SKColor(255,   0, 255),
-        7  => new SKColor(255, 255, 255),
-        8  => new SKColor(128, 128, 128),
-        9  => new SKColor(192, 192, 192),
-        _  => AciPaletteApprox(idx)
-    };
-
-    private static SKColor AciPaletteApprox(short idx)
-    {
-        if (idx is >= 10 and <= 19) return new SKColor(255, (byte)(255 - (idx - 10) * 28), 0);
-        if (idx is >= 20 and <= 29) return new SKColor(255, (byte)((idx - 20) * 28), 0);
-        if (idx is >= 40 and <= 49) return new SKColor((byte)(255 - (idx - 40) * 28), 255, 0);
-        if (idx is >= 60 and <= 69) return new SKColor(0, 255, (byte)((idx - 60) * 28));
-        if (idx is >= 80 and <= 89) return new SKColor(0, (byte)(255 - (idx - 80) * 28), 255);
-        if (idx is >= 100 and <= 109) return new SKColor((byte)((idx - 100) * 28), 0, 255);
-        if (idx is >= 120 and <= 129) return new SKColor(255, 0, (byte)(255 - (idx - 120) * 28));
-        return new SKColor(200, 200, 200);
+        return CadGeometry.AciIndexToSKColor(aci.Index);
     }
 
     // --- Legacy (headerless) DXF parser ---
@@ -347,7 +269,10 @@ public static class DxfParser
     private static List<GrpRec> ReadGroupCodes(string filePath)
     {
         var result = new List<GrpRec>(512);
-        using var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+        // Never writes -- open with the most permissive sharing mode so a file already
+        // open elsewhere (Microvellum, a text editor, Explorer's preview pane) can still
+        // be opened here read-only instead of failing with a sharing violation.
+        using var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
         using var sr = new StreamReader(fs, detectEncodingFromByteOrderMarks: true);
         while (true)
         {
@@ -402,7 +327,7 @@ public static class DxfParser
     {
         for (int i = start; i < Math.Min(end, recs.Count); i++)
             if (recs[i].Code == 62 && short.TryParse(recs[i].Value, out short aci))
-                return AciIndexToSKColor(aci);
+                return CadGeometry.AciIndexToSKColor(aci);
         return new SKColor(255, 255, 255);
     }
 
@@ -520,7 +445,7 @@ public static class DxfParser
 
                 if (Math.Abs(bulge) > 1e-9)
                 {
-                    foreach (var bp in BulgePoints(new Vector2(x1, y1), new Vector2(x2, y2), bulge))
+                    foreach (var bp in CadGeometry.BulgePoints((x1, y1), (x2, y2), bulge))
                         poly.Points.Add(new SKPoint((float)bp.X, (float)bp.Y));
                 }
                 else
@@ -537,6 +462,7 @@ public static class DxfParser
     {
         int end = NextCode0(recs, start);
         string text = "";
+        string dimStyle = "";
         float dx = 0, dy = 0;   // dimension line definition point (10, 20)
         float tx = 0, ty = 0;   // text midpoint (11, 21)
         float e1x = 0, e1y = 0; // extension line 1 origin (13, 23)
@@ -546,48 +472,66 @@ public static class DxfParser
         for (int i = start; i < end; i++)
             switch (recs[i].Code)
             {
-                case  1: text  = recs[i].Value;          break;
-                case 10: dx    = ParseF(recs[i].Value);  break;
-                case 20: dy    = ParseF(recs[i].Value);  break;
-                case 11: tx    = ParseF(recs[i].Value);  break;
-                case 21: ty    = ParseF(recs[i].Value);  break;
-                case 13: e1x   = ParseF(recs[i].Value);  break;
-                case 23: e1y   = ParseF(recs[i].Value);  break;
-                case 14: e2x   = ParseF(recs[i].Value);  break;
-                case 24: e2y   = ParseF(recs[i].Value);  break;
-                case 50: angle = ParseF(recs[i].Value);  break;
+                case  1: text     = recs[i].Value;          break;
+                case  3: dimStyle = recs[i].Value;           break;
+                case 10: dx       = ParseF(recs[i].Value);  break;
+                case 20: dy       = ParseF(recs[i].Value);  break;
+                case 11: tx       = ParseF(recs[i].Value);  break;
+                case 21: ty       = ParseF(recs[i].Value);  break;
+                case 13: e1x      = ParseF(recs[i].Value);  break;
+                case 23: e1y      = ParseF(recs[i].Value);  break;
+                case 14: e2x      = ParseF(recs[i].Value);  break;
+                case 24: e2y      = ParseF(recs[i].Value);  break;
+                case 50: angle    = ParseF(recs[i].Value);  break;
             }
 
         var color = LegacyColor(recs, start, end);
         var layer = LegacyLayer(recs, start, end);
-        const float tick = 3f;
+        // A "ROUTEDIM"-styled dimension measures a CNC toolpath/routing distance rather
+        // than a part edge -- its coordinates live in the machine's routing space, which
+        // can be tens of units away from the part itself (seen directly: one measured 86
+        // units below a part whose own geometry spanned under 8 units, blowing the fit
+        // view out to almost nothing). The same dimstyle is also used for ordinary edge
+        // dimensions that sit right on the part, so this can't just recolor/hide the
+        // layer wholesale -- it only exempts these specific entities from the fit-view
+        // bounds calculation (same treatment as a hidden layer), leaving rendering as-is.
+        bool routeAnnotation = dimStyle.StartsWith("ROUTE", StringComparison.OrdinalIgnoreCase);
+        // Same reasoning as the dimension text height below: a fixed tick size doesn't
+        // scale with the drawing. 3 units was often comparable to (or bigger than) the
+        // entire extension-line span it was decorating -- match the small label scale
+        // these files consistently use instead.
+        const float tick = 0.5f;
         bool vertical = Math.Abs(angle - 90f) < 1f;
 
         if (vertical)
         {
             // Extension lines run horizontally to dim line X
-            scene.Lines.Add(new SceneLine(e1x, e1y, dx, e1y, color) { Layer = layer });
-            scene.Lines.Add(new SceneLine(e2x, e2y, dx, e2y, color) { Layer = layer });
+            scene.Lines.Add(new SceneLine(e1x, e1y, dx, e1y, color) { Layer = layer, BoundsExempt = routeAnnotation });
+            scene.Lines.Add(new SceneLine(e2x, e2y, dx, e2y, color) { Layer = layer, BoundsExempt = routeAnnotation });
             // Vertical dim line
-            scene.Lines.Add(new SceneLine(dx, e1y, dx, e2y, color) { Layer = layer });
+            scene.Lines.Add(new SceneLine(dx, e1y, dx, e2y, color) { Layer = layer, BoundsExempt = routeAnnotation });
             // Arrow ticks
-            scene.Lines.Add(new SceneLine(dx - tick, e1y - tick, dx + tick, e1y + tick, color) { Layer = layer });
-            scene.Lines.Add(new SceneLine(dx - tick, e2y - tick, dx + tick, e2y + tick, color) { Layer = layer });
+            scene.Lines.Add(new SceneLine(dx - tick, e1y - tick, dx + tick, e1y + tick, color) { Layer = layer, BoundsExempt = routeAnnotation });
+            scene.Lines.Add(new SceneLine(dx - tick, e2y - tick, dx + tick, e2y + tick, color) { Layer = layer, BoundsExempt = routeAnnotation });
         }
         else
         {
             // Extension lines run vertically to dim line Y
-            scene.Lines.Add(new SceneLine(e1x, e1y, e1x, dy, color) { Layer = layer });
-            scene.Lines.Add(new SceneLine(e2x, e2y, e2x, dy, color) { Layer = layer });
+            scene.Lines.Add(new SceneLine(e1x, e1y, e1x, dy, color) { Layer = layer, BoundsExempt = routeAnnotation });
+            scene.Lines.Add(new SceneLine(e2x, e2y, e2x, dy, color) { Layer = layer, BoundsExempt = routeAnnotation });
             // Horizontal dim line
-            scene.Lines.Add(new SceneLine(e1x, dy, e2x, dy, color) { Layer = layer });
+            scene.Lines.Add(new SceneLine(e1x, dy, e2x, dy, color) { Layer = layer, BoundsExempt = routeAnnotation });
             // Arrow ticks
-            scene.Lines.Add(new SceneLine(e1x - tick, dy - tick, e1x + tick, dy + tick, color) { Layer = layer });
-            scene.Lines.Add(new SceneLine(e2x - tick, dy - tick, e2x + tick, dy + tick, color) { Layer = layer });
+            scene.Lines.Add(new SceneLine(e1x - tick, dy - tick, e1x + tick, dy + tick, color) { Layer = layer, BoundsExempt = routeAnnotation });
+            scene.Lines.Add(new SceneLine(e2x - tick, dy - tick, e2x + tick, dy + tick, color) { Layer = layer, BoundsExempt = routeAnnotation });
         }
 
+        // DIMENSION entities carry no text-height group code of their own (that's normally
+        // governed by a dimension style/$DIMTXT, unavailable in these headerless legacy
+        // files) -- match the small label-text height these exports consistently use for
+        // regular TEXT entities (0.5) rather than a value disproportionate to the drawing.
         if (!string.IsNullOrEmpty(text))
-            scene.Texts.Add(new SceneText(tx, ty, 12f, angle, DecodeDxfText(text), color) { Layer = layer });
+            scene.Texts.Add(new SceneText(tx, ty, 0.5f, angle, CadGeometry.DecodeDxfText(text), color) { Layer = layer, BoundsExempt = routeAnnotation });
 
         return end;
     }
@@ -604,7 +548,7 @@ public static class DxfParser
                 case 20: ty     = ParseF(recs[i].Value); break;
                 case 40: height = ParseF(recs[i].Value); break;
                 case 50: rot    = ParseF(recs[i].Value); break;
-                case  1: value  = DecodeDxfText(recs[i].Value); break;
+                case  1: value  = CadGeometry.DecodeDxfText(recs[i].Value); break;
             }
         if (!string.IsNullOrWhiteSpace(value) && height > 0)
             scene.Texts.Add(new SceneText(tx, ty, height, rot, value, LegacyColor(recs, start, end))
