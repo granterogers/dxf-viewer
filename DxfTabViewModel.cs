@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Threading;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
@@ -84,6 +85,21 @@ public class DxfTabViewModel : INotifyPropertyChanged
 
     public string SceneReadout => Scene == null ? "" : Scene.DiagnosticsSummary;
 
+    private string _selectionReadout = "";
+    public string SelectionReadout
+    {
+        get => _selectionReadout;
+        set { _selectionReadout = value; OnPropertyChanged(); OnPropertyChanged(nameof(HasSelectionReadout)); }
+    }
+    public bool HasSelectionReadout => !string.IsNullOrEmpty(_selectionReadout);
+
+    private bool _measureMode;
+    public bool MeasureMode
+    {
+        get => _measureMode;
+        set { _measureMode = value; OnPropertyChanged(); }
+    }
+
     private List<string> _dirFiles = new();
     private int _dirIndex = -1;
     public bool CanNavPrev => _dirFiles.Count > 1;
@@ -128,8 +144,21 @@ public class DxfTabViewModel : INotifyPropertyChanged
 
     public void Load() => LoadFile(FilePath);
 
+    // Parsing already ran off the UI thread, but nothing could stop it: opening a large
+    // file by mistake meant waiting it out, and closing the tab left the work running.
+    private CancellationTokenSource? _loadCts;
+
+    public void CancelLoad()
+    {
+        _loadCts?.Cancel();
+    }
+
     private async void LoadFile(string path)
     {
+        _loadCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _loadCts = cts;
+
         State = TabState.Loading;
         Pages = new();
         _currentPageIndex = 0;
@@ -139,7 +168,11 @@ public class DxfTabViewModel : INotifyPropertyChanged
         {
             var pages = await Task.Run(() => path.EndsWith(".dwg", StringComparison.OrdinalIgnoreCase)
                 ? DwgParser.Parse(path)
-                : DxfParser.Parse(path));
+                : DxfParser.Parse(path), cts.Token);
+
+            // The parse itself cannot be interrupted mid-entity, so cancellation is
+            // honoured by discarding the result rather than by stopping the work.
+            if (cts.IsCancellationRequested) return;
             Pages = pages;
             _currentPageIndex = 0;
             PageNames.Clear();
@@ -154,8 +187,13 @@ public class DxfTabViewModel : INotifyPropertyChanged
             State = TabState.Loaded;
             FitAction?.Invoke();
         }
+        catch (OperationCanceledException)
+        {
+            State = TabState.Empty;
+        }
         catch (Exception ex)
         {
+            if (cts.IsCancellationRequested) { State = TabState.Empty; return; }
             ErrorMessage = ex.Message;
             State = TabState.Error;
         }

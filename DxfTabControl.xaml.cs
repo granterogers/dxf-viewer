@@ -47,6 +47,12 @@ public partial class DxfTabControl : UserControl
     private SKPicture? _picture;
     private string? _pictureKey;
 
+    // Inspect / measure overlay state. Drawn on top of the cached scene picture so making
+    // a selection never invalidates the cache.
+    private SKRect? _selectionBox;
+    private SKPoint? _measureA, _measureB;
+    private Point _pressOrigin;
+
     public DxfTabControl()
     {
         InitializeComponent();
@@ -190,6 +196,7 @@ public partial class DxfTabControl : UserControl
                     canvas.Translate(_fitOffsetX, _fitOffsetY);
                     canvas.Scale(_fitZoom);          // apply fit scale so DXF units map to screen pixels
                     canvas.DrawPicture(GetScenePicture(_vm.Scene, visibleLayers));
+                    DrawOverlay(canvas);
                     canvas.Restore();
                 }
             }
@@ -267,6 +274,179 @@ public partial class DxfTabControl : UserControl
         using var data = image.Encode(SKEncodedImageFormat.Png, 100);
         using var fs = new System.IO.FileStream(path, System.IO.FileMode.Create, System.IO.FileAccess.Write);
         data.SaveTo(fs);
+    }
+
+    // Nearest entity to a scene-space point, within a tolerance expressed in screen pixels
+    // so the grab radius feels the same at every zoom level.
+    private bool TryPickEntity(float sx, float sy, out string description, out SKRect box)
+    {
+        description = ""; box = default;
+        var scene = _vm?.Scene;
+        if (scene == null) return false;
+
+        float scale = _zoom * _fitZoom;
+        float tol = scale > 1e-6f ? 8f / scale : 8f;
+        float best = float.MaxValue;
+        string bestDesc = "";
+        SKRect bestBox = default;
+
+        // Locals rather than the out parameters directly: a local function cannot capture
+        // an out parameter.
+        void Consider(float d, string desc, SKRect b)
+        {
+            if (d >= best || d > tol) return;
+            best = d; bestDesc = desc; bestBox = b;
+        }
+
+        foreach (var l in scene.Lines)
+        {
+            float len = MathF.Sqrt((l.X2 - l.X1) * (l.X2 - l.X1) + (l.Y2 - l.Y1) * (l.Y2 - l.Y1));
+            Consider(DistanceToSegment(sx, sy, l.X1, l.Y1, l.X2, l.Y2),
+                $"LINE   layer {l.Layer}   ({l.X1:F3}, {l.Y1:F3}) to ({l.X2:F3}, {l.Y2:F3})   length {len:F3}",
+                new SKRect(MathF.Min(l.X1, l.X2), -MathF.Max(l.Y1, l.Y2),
+                           MathF.Max(l.X1, l.X2), -MathF.Min(l.Y1, l.Y2)));
+        }
+        foreach (var c in scene.Circles)
+        {
+            Consider(MathF.Abs(MathF.Sqrt((sx - c.Cx) * (sx - c.Cx) + (sy - c.Cy) * (sy - c.Cy)) - c.R),
+                $"CIRCLE   layer {c.Layer}   centre ({c.Cx:F3}, {c.Cy:F3})   radius {c.R:F3}   dia {c.R * 2:F3}",
+                new SKRect(c.Cx - c.R, -c.Cy - c.R, c.Cx + c.R, -c.Cy + c.R));
+        }
+        foreach (var a in scene.Arcs)
+        {
+            Consider(MathF.Abs(MathF.Sqrt((sx - a.Cx) * (sx - a.Cx) + (sy - a.Cy) * (sy - a.Cy)) - a.R),
+                $"ARC   layer {a.Layer}   centre ({a.Cx:F3}, {a.Cy:F3})   radius {a.R:F3}   {a.StartDeg:F1} to {a.EndDeg:F1} deg",
+                new SKRect(a.Cx - a.R, -a.Cy - a.R, a.Cx + a.R, -a.Cy + a.R));
+        }
+        foreach (var p in scene.Polylines)
+        {
+            for (int i = 1; i < p.Points.Count; i++)
+            {
+                float d = DistanceToSegment(sx, sy, p.Points[i - 1].X, p.Points[i - 1].Y, p.Points[i].X, p.Points[i].Y);
+                if (d >= best || d > tol) continue;
+                float mnx = float.MaxValue, mny = float.MaxValue, mxx = float.MinValue, mxy = float.MinValue;
+                foreach (var pt in p.Points)
+                {
+                    mnx = MathF.Min(mnx, pt.X); mxx = MathF.Max(mxx, pt.X);
+                    mny = MathF.Min(mny, -pt.Y); mxy = MathF.Max(mxy, -pt.Y);
+                }
+                string closed = p.Closed ? "   closed" : "";
+                Consider(d, $"POLYLINE   layer {p.Layer}   {p.Points.Count} vertices{closed}",
+                    new SKRect(mnx, mny, mxx, mxy));
+            }
+        }
+        foreach (var t in scene.Texts)
+        {
+            float w = t.Value.Length * t.Height * 0.6f;
+            if (sx < t.X - w || sx > t.X + w || sy < t.Y - t.Height || sy > t.Y + t.Height) continue;
+            Consider(0f, $"TEXT   layer {t.Layer}   {t.Value}   height {t.Height:F3}",
+                new SKRect(t.X, -t.Y - t.Height, t.X + w, -t.Y));
+        }
+
+        description = bestDesc;
+        box = bestBox;
+        return !string.IsNullOrEmpty(description);
+    }
+
+    private static float DistanceToSegment(float px, float py, float x1, float y1, float x2, float y2)
+    {
+        float dx = x2 - x1, dy = y2 - y1;
+        float lenSq = dx * dx + dy * dy;
+        if (lenSq < 1e-12f) return MathF.Sqrt((px - x1) * (px - x1) + (py - y1) * (py - y1));
+        float t = Math.Clamp(((px - x1) * dx + (py - y1) * dy) / lenSq, 0f, 1f);
+        float cx = x1 + t * dx, cy = y1 + t * dy;
+        return MathF.Sqrt((px - cx) * (px - cx) + (py - cy) * (py - cy));
+    }
+
+    // Snaps to the nearest endpoint or circle/arc centre, so a measurement lands on real
+    // geometry rather than wherever the cursor happened to be.
+    private SKPoint SnapPoint(float sx, float sy)
+    {
+        var scene = _vm?.Scene;
+        if (scene == null) return new SKPoint(sx, sy);
+        float scale = _zoom * _fitZoom;
+        float best = scale > 1e-6f ? 12f / scale : 12f;
+        var result = new SKPoint(sx, sy);
+
+        void Try(float x, float y)
+        {
+            float d = MathF.Sqrt((sx - x) * (sx - x) + (sy - y) * (sy - y));
+            if (d < best) { best = d; result = new SKPoint(x, y); }
+        }
+        foreach (var l in scene.Lines) { Try(l.X1, l.Y1); Try(l.X2, l.Y2); }
+        foreach (var c in scene.Circles) Try(c.Cx, c.Cy);
+        foreach (var a in scene.Arcs) Try(a.Cx, a.Cy);
+        foreach (var p in scene.Polylines) foreach (var pt in p.Points) Try(pt.X, pt.Y);
+        return result;
+    }
+
+    private void DrawOverlay(SKCanvas canvas)
+    {
+        if (_selectionBox == null && _measureA == null) return;
+        using var paint = new SKPaint
+        {
+            IsAntialias = true,
+            Style = SKPaintStyle.Stroke,
+            StrokeWidth = 0f,
+            Color = new SKColor(0xE0, 0x78, 0x20),
+        };
+
+        if (_selectionBox is { } box)
+        {
+            var outline = box;
+            outline.Inflate(box.Width * 0.04f + 0.5f, box.Height * 0.04f + 0.5f);
+            canvas.DrawRect(outline, paint);
+        }
+
+        if (_measureA is { } a)
+        {
+            float r = 3f / MathF.Max(1e-6f, _zoom * _fitZoom);
+            canvas.DrawCircle(a.X, -a.Y, r, paint);
+            if (_measureB is { } b)
+            {
+                canvas.DrawCircle(b.X, -b.Y, r, paint);
+                canvas.DrawLine(a.X, -a.Y, b.X, -b.Y, paint);
+            }
+        }
+    }
+
+    // A left press that never became a drag is a pick, not a pan.
+    private void HandleClick(Point p)
+    {
+        if (_vm == null || _vm.Scene?.Is3D == true) return;
+        if (!TryScenePoint(p, out float x, out float y)) return;
+
+        if (_vm.MeasureMode)
+        {
+            var snapped = SnapPoint(x, y);
+            if (_measureA == null || _measureB != null)
+            {
+                _measureA = snapped; _measureB = null;
+                _vm.SelectionReadout = "measure: pick the second point";
+            }
+            else
+            {
+                _measureB = snapped;
+                float dx = _measureB.Value.X - _measureA.Value.X;
+                float dy = _measureB.Value.Y - _measureA.Value.Y;
+                _vm.SelectionReadout =
+                    $"distance {MathF.Sqrt(dx * dx + dy * dy):F4}    dX {dx:F4}    dY {dy:F4}";
+            }
+            Render();
+            return;
+        }
+
+        if (TryPickEntity(x, y, out string desc, out SKRect box))
+        {
+            _selectionBox = box;
+            _vm.SelectionReadout = desc;
+        }
+        else
+        {
+            _selectionBox = null;
+            _vm.SelectionReadout = "";
+        }
+        Render();
     }
 
     private void InvalidateScenePicture()
@@ -489,6 +669,7 @@ public partial class DxfTabControl : UserControl
             _panning = true;
         }
         _lastMouse = e.GetPosition(SkiaHost);
+        _pressOrigin = _lastMouse;
         SkiaHost.Cursor = _orbiting ? Cursors.SizeAll : Cursors.ScrollAll;
         SkiaHost.CaptureMouse();
     }
@@ -550,10 +731,16 @@ public partial class DxfTabControl : UserControl
 
     private void Canvas_MouseUp(object sender, MouseButtonEventArgs e)
     {
+        bool wasPanning = _panning;
         _panning = false;
         _orbiting = false;
         SkiaHost.Cursor = Cursors.Arrow;
         SkiaHost.ReleaseMouseCapture();
+
+        var p = e.GetPosition(SkiaHost);
+        bool dragged = Math.Abs(p.X - _pressOrigin.X) > 3 || Math.Abs(p.Y - _pressOrigin.Y) > 3;
+        if (wasPanning && !dragged && e.ChangedButton == MouseButton.Left)
+            HandleClick(p);
     }
 
     private void Canvas_MouseWheel(object sender, MouseWheelEventArgs e)

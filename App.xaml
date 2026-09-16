@@ -5,16 +5,27 @@
   <Application.Resources>
     <ResourceDictionary>
       <local:BoolToVisibilityConverter x:Key="BoolToVisibility"/>
+      <local:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibility"/>
 
       <!-- ===== Design tokens =====
            Every color, spacing step and text size in the app resolves here. Previously
            these hex values were repeated across three XAML files and two C# render paths,
-           so a change had to be made in five places to stay consistent. -->
+           so a change had to be made in five places to stay consistent.
+
+           Chrome colors come from the INNERGY Corporate Identity Manual (Winter 2025):
+           corporate dark #333345 and the flat brand orange #F95411. The manual's system
+           is orange/red plus dark navy and explicitly rules out generic blue accents,
+           which is why the old #1565C0 toolbar buttons are gone.
+
+           NOTE: the *drawing* colors are deliberately NOT branded. Blue borders, green
+           routes and red dimension text are Microvellum's own cutlist conventions, and
+           parity with Microvellum is the correctness bar for this app (see CLAUDE.md).
+           Those live in CadGeometry.LayerColorOverride and must stay as they are. -->
       <Color x:Key="CanvasBgColor">#12121E</Color>
       <SolidColorBrush x:Key="CanvasBg"     Color="#12121E"/>
       <SolidColorBrush x:Key="PanelBg"      Color="#1E1E30"/>
-      <SolidColorBrush x:Key="ToolbarBg"    Color="#252535"/>
-      <SolidColorBrush x:Key="WindowBg"     Color="#1E1E1E"/>
+      <SolidColorBrush x:Key="ToolbarBg"    Color="#333345"/>
+      <SolidColorBrush x:Key="WindowBg"     Color="#2A2A38"/>
       <SolidColorBrush x:Key="TabStripBg"   Color="#1A1A2E"/>
       <SolidColorBrush x:Key="TabBg"        Color="#252540"/>
       <SolidColorBrush x:Key="StrokeSubtle" Color="#303048"/>
@@ -22,12 +33,25 @@
       <SolidColorBrush x:Key="TextPrimary"  Color="#D0D0E0"/>
       <SolidColorBrush x:Key="TextMuted"    Color="#9090A0"/>
       <SolidColorBrush x:Key="TextFaint"    Color="#606070"/>
-      <SolidColorBrush x:Key="AccentOrange" Color="#E07820"/>
-      <SolidColorBrush x:Key="AccentOrangeDim" Color="#A85510"/>
-      <SolidColorBrush x:Key="AccentBlue"   Color="#1565C0"/>
-      <SolidColorBrush x:Key="AccentBlueDim" Color="#0D47A1"/>
+      <SolidColorBrush x:Key="AccentOrange" Color="#F95411"/>
+      <SolidColorBrush x:Key="AccentOrangeDim" Color="#C43D0A"/>
+      <SolidColorBrush x:Key="ChromeButton" Color="#3F3F55"/>
+      <SolidColorBrush x:Key="ChromeButtonEdge" Color="#4C4C66"/>
       <SolidColorBrush x:Key="ErrorFg"      Color="#CC4444"/>
       <SolidColorBrush x:Key="ErrorFgDim"   Color="#AA6666"/>
+
+      <!-- Brand gradient, used for the accent strip. The manual defines the icon gradient
+           as #E4323E -> #F65524; a flat #F95411 is the sanctioned fallback. -->
+      <LinearGradientBrush x:Key="BrandGradient" StartPoint="0,0" EndPoint="1,0">
+        <GradientStop Color="#E4323E" Offset="0"/>
+        <GradientStop Color="#ED4431" Offset="0.5"/>
+        <GradientStop Color="#F65524" Offset="1"/>
+      </LinearGradientBrush>
+
+      <!-- Brandon Grotesque / Avenir Next are the brand faces; neither ships with Windows,
+           so this is the manual's own geometric-sans fallback stack, ending at Segoe UI
+           so the app still renders correctly on a stock machine. -->
+      <FontFamily x:Key="BrandFont">Avenir Next, Century Gothic, Futura, Segoe UI, Arial</FontFamily>
 
       <!-- 4px spacing scale -->
       <Thickness x:Key="Space1">4</Thickness>
@@ -51,7 +75,7 @@
         <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
       </Style>
       <Style x:Key="HeadingText" TargetType="TextBlock">
-        <Setter Property="FontFamily" Value="Segoe UI"/>
+        <Setter Property="FontFamily" Value="{StaticResource BrandFont}"/>
         <Setter Property="FontSize" Value="{StaticResource FontHeading}"/>
         <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
       </Style>
@@ -87,21 +111,30 @@
 
       <!-- Shared blue button template — no hover/press color changes -->
       <ControlTemplate x:Key="BlueButtonTemplate" TargetType="Button">
-        <Border Background="{TemplateBinding Background}"
+        <Border x:Name="Chrome"
+                Background="{TemplateBinding Background}"
                 BorderBrush="{TemplateBinding BorderBrush}"
                 BorderThickness="{TemplateBinding BorderThickness}"
                 Padding="{TemplateBinding Padding}">
           <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
         </Border>
+        <ControlTemplate.Triggers>
+          <Trigger Property="IsMouseOver" Value="True">
+            <Setter TargetName="Chrome" Property="Background" Value="{StaticResource ChromeButtonEdge}"/>
+          </Trigger>
+          <Trigger Property="IsEnabled" Value="False">
+            <Setter TargetName="Chrome" Property="Opacity" Value="0.4"/>
+          </Trigger>
+        </ControlTemplate.Triggers>
       </ControlTemplate>
 
       <!-- Standard toolbar button (blue, static color) -->
       <Style x:Key="ToolbarButton" TargetType="Button">
         <Setter Property="Padding" Value="8,4"/>
         <Setter Property="Margin" Value="0,0,8,0"/>
-        <Setter Property="Background" Value="#1565C0"/>
+        <Setter Property="Background" Value="{StaticResource ChromeButton}"/>
         <Setter Property="Foreground" Value="White"/>
-        <Setter Property="BorderBrush" Value="#0D47A1"/>
+        <Setter Property="BorderBrush" Value="{StaticResource ChromeButtonEdge}"/>
         <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="Cursor" Value="Hand"/>
         <Setter Property="Template" Value="{StaticResource BlueButtonTemplate}"/>
@@ -111,9 +144,9 @@
       <Style x:Key="ToolbarToggleButton" TargetType="ToggleButton">
         <Setter Property="Padding" Value="8,4"/>
         <Setter Property="Margin" Value="0,0,8,0"/>
-        <Setter Property="Background" Value="#1565C0"/>
+        <Setter Property="Background" Value="{StaticResource ChromeButton}"/>
         <Setter Property="Foreground" Value="White"/>
-        <Setter Property="BorderBrush" Value="#0D47A1"/>
+        <Setter Property="BorderBrush" Value="{StaticResource ChromeButtonEdge}"/>
         <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="Cursor" Value="Hand"/>
         <Setter Property="Template">
@@ -128,21 +161,21 @@
               </Border>
               <ControlTemplate.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">
-                  <Setter TargetName="Chrome" Property="Background" Value="#1976D2"/>
+                  <Setter TargetName="Chrome" Property="Background" Value="{StaticResource ChromeButtonEdge}"/>
                 </Trigger>
                 <!-- Checked state has to repaint the template's own Border: the style's
                      Background setter is what TemplateBinding reads, so a plain Setter on
                      the ToggleButton is overridden by the hover trigger above. -->
                 <Trigger Property="IsChecked" Value="True">
-                  <Setter TargetName="Chrome" Property="Background"  Value="#E07820"/>
-                  <Setter TargetName="Chrome" Property="BorderBrush" Value="#A85510"/>
+                  <Setter TargetName="Chrome" Property="Background"  Value="{StaticResource AccentOrange}"/>
+                  <Setter TargetName="Chrome" Property="BorderBrush" Value="{StaticResource AccentOrangeDim}"/>
                 </Trigger>
                 <MultiTrigger>
                   <MultiTrigger.Conditions>
                     <Condition Property="IsChecked"   Value="True"/>
                     <Condition Property="IsMouseOver" Value="True"/>
                   </MultiTrigger.Conditions>
-                  <Setter TargetName="Chrome" Property="Background" Value="#F08A2E"/>
+                  <Setter TargetName="Chrome" Property="Background" Value="#FF6A2A"/>
                 </MultiTrigger>
               </ControlTemplate.Triggers>
             </ControlTemplate>

@@ -143,6 +143,7 @@
                           <ColumnDefinition Width="Auto"/>
                           <ColumnDefinition Width="*"/>
                           <ColumnDefinition Width="Auto"/>
+                          <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <CheckBox Grid.Column="0"
                                   IsChecked="{Binding IsVisible, Mode=TwoWay}"
@@ -164,7 +165,16 @@
                                    Text="{Binding EntityCount}"
                                    Style="{StaticResource LabelText}"
                                    VerticalAlignment="Center"
-                                   Margin="4,0,8,0"/>
+                                   Margin="4,0,4,0"/>
+                        <Button Grid.Column="4"
+                                Content="solo"
+                                Style="{StaticResource PanelButton}"
+                                Margin="0,0,8,0"
+                                Padding="4,1"
+                                Command="{Binding DataContext.SoloLayerCommand,
+                                          RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                CommandParameter="{Binding}"
+                                ToolTip="Show only this layer (click again to restore all)"/>
                       </Grid>
                     </Border>
                     <DataTemplate.Triggers>
@@ -201,7 +211,15 @@
                    Style="{StaticResource LabelText}"
                    HorizontalAlignment="Right"
                    TextTrimming="CharacterEllipsis"
-                   ToolTip="{Binding SceneReadout}"/>
+                   ToolTip="{Binding SceneReadout}"
+                   Visibility="{Binding HasSelectionReadout, Converter={StaticResource InverseBoolToVisibility}}"/>
+        <TextBlock Grid.Column="2" Text="{Binding SelectionReadout}"
+                   Style="{StaticResource LabelText}"
+                   Foreground="{StaticResource AccentOrange}"
+                   HorizontalAlignment="Right"
+                   TextTrimming="CharacterEllipsis"
+                   ToolTip="{Binding SelectionReadout}"
+                   Visibility="{Binding HasSelectionReadout, Converter={StaticResource BoolToVisibility}}"/>
       </Grid>
     </Border>
   </Grid>

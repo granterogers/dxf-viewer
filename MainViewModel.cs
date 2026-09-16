@@ -40,6 +40,13 @@ public class MainViewModel : INotifyPropertyChanged
     public ICommand OpenWithMicrovellumCommand { get; }
     public ICommand ToggleLightBackgroundCommand { get; }
     public ICommand ExportPngCommand { get; }
+    public ICommand ToggleMeasureCommand { get; }
+
+    public bool MeasureMode
+    {
+        get => ActiveTab?.MeasureMode == true;
+        set { if (ActiveTab != null) { ActiveTab.MeasureMode = value; OnPropertyChanged(); } }
+    }
 
     private bool _lightBackground = AppSettings.LightBackground;
     public bool LightBackground
@@ -68,6 +75,7 @@ public class MainViewModel : INotifyPropertyChanged
         OpenWithMicrovellumCommand = new RelayCommand(_ => OpenWithMicrovellum(), _ => ActiveTab?.IsLoaded == true);
         ToggleLightBackgroundCommand = new RelayCommand(_ => LightBackground = !LightBackground);
         ExportPngCommand = new RelayCommand(_ => ExportPng(), _ => ActiveTab?.IsLoaded == true);
+        ToggleMeasureCommand = new RelayCommand(_ => MeasureMode = !MeasureMode, _ => ActiveTab?.IsLoaded == true);
         Theme.LightBackground = _lightBackground;
     }
 
