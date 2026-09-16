@@ -63,3 +63,7 @@ $RECYCLE.BIN/
 ## Misc
 *.orig
 *.rej
+
+# CAD drawing-lock files created when another app opens a sample
+*.dwl
+*.dwl2

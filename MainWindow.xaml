@@ -75,22 +75,6 @@
             <!-- Divider -->
             <Border Width="1" Background="#2A4A70" Margin="6,3"/>
 
-            <!-- Volume control -->
-            <ToggleButton Style="{StaticResource ToolbarToggleButton}"
-                          Content="&#128266;"
-                          Command="{Binding ToggleMuteCommand}"
-                          IsChecked="{Binding Muted, Mode=OneWay}"
-                          ToolTip="Mute all app sounds"/>
-            <Slider Width="80"
-                    Minimum="0" Maximum="100"
-                    Value="{Binding Volume}"
-                    VerticalAlignment="Center"
-                    Margin="4,0,0,0"
-                    ToolTip="App sound volume"/>
-
-            <!-- Divider -->
-            <Border Width="1" Background="#2A4A70" Margin="6,3"/>
-
             <!-- Version -->
             <TextBlock Text="{x:Static local:AppVersion.Label}"
                        Foreground="#6A6A78"

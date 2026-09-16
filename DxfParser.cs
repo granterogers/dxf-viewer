@@ -37,7 +37,8 @@ public static class DxfParser
         doc.Lines.Any() || doc.Arcs.Any() || doc.Circles.Any() ||
         doc.Ellipses.Any() || doc.LwPolylines.Any() || doc.Polylines.Any() ||
         doc.Texts.Any() || doc.MTexts.Any() || doc.Inserts.Any() ||
-        doc.Splines.Any() || doc.Points.Any();
+        doc.Splines.Any() || doc.Points.Any() ||
+        doc.Dimensions.Any() || doc.Hatches.Any();
 
     // --- Modern parser (netDxf) ---
 
@@ -52,10 +53,13 @@ public static class DxfParser
         foreach (var e in doc.Splines)     AddSpline(scene, e, null);
         foreach (var e in doc.Texts)       AddText(scene, e, null);
         foreach (var e in doc.MTexts)      AddMText(scene, e, null);
+        foreach (var e in doc.Points)      AddPoint(scene, e, null);
+        foreach (var e in doc.Hatches)     AddHatch(scene, e);
+        foreach (var e in doc.Dimensions)  AddDimension(scene, e);
         foreach (var e in doc.Inserts)     AddInsert(scene, e);
     }
 
-    private static void AddEntityFromBlock(DxfScene scene, EntityObject entity, Layer? blockLayer, Matrix4 xform)
+    private static void AddEntityFromBlock(DxfScene scene, EntityObject entity, Layer? blockLayer, Matrix4 xform, int depth)
     {
         switch (entity)
         {
@@ -64,14 +68,22 @@ public static class DxfParser
             case Circle e:     AddCircle(scene, e, blockLayer, xform); break;
             case LwPolyline e: AddLwPolyline(scene, e, blockLayer, xform); break;
             case Polyline e:   AddPolyline(scene, e, blockLayer, xform); break;
-            case Text e:       AddText(scene, e, blockLayer); break;
-            case MText e:      AddMText(scene, e, blockLayer); break;
+            case Ellipse e:    AddEllipse(scene, e, blockLayer, xform); break;
+            case Spline e:     AddSpline(scene, e, blockLayer, xform); break;
+            case Point e:      AddPoint(scene, e, blockLayer, xform); break;
+            case Text e:       AddText(scene, e, blockLayer, xform); break;
+            case MText e:      AddMText(scene, e, blockLayer, xform); break;
+            case Insert e:     AddInsert(scene, e, xform, depth + 1); break;
         }
     }
 
-    private static void AddInsert(DxfScene scene, Insert ins)
+    // Guards against a malformed file whose block definitions reference each other in a
+    // cycle -- without a cap that recurses until the stack dies.
+    private const int MaxBlockNestDepth = 16;
+
+    private static void AddInsert(DxfScene scene, Insert ins, Matrix4? parent = null, int depth = 0)
     {
-        if (ins.Block == null) return;
+        if (ins.Block == null || depth > MaxBlockNestDepth) return;
 
         double sinR = Math.Sin(ins.Rotation * Math.PI / 180);
         double cosR = Math.Cos(ins.Rotation * Math.PI / 180);
@@ -85,10 +97,34 @@ public static class DxfParser
             0, 0, 1, 0,
             0, 0, 0, 1);
 
+        // A nested INSERT's own transform is relative to the block that contains it, so it
+        // has to be composed with every enclosing insert's transform, outermost first.
+        if (parent.HasValue) xform = Compose(parent.Value, xform);
+
         var blockLayer = ins.Layer;
         foreach (var entity in ins.Block.Entities)
-            AddEntityFromBlock(scene, entity, blockLayer, xform);
+            AddEntityFromBlock(scene, entity, blockLayer, xform, depth);
     }
+
+    // Composes two affine transforms over the 2D subset ApplyXform actually reads
+    // (M11/M12/M14 and M21/M22/M24), producing "apply inner, then outer".
+    private static Matrix4 Compose(Matrix4 outer, Matrix4 inner) => new(
+        outer.M11 * inner.M11 + outer.M12 * inner.M21,
+        outer.M11 * inner.M12 + outer.M12 * inner.M22,
+        0,
+        outer.M11 * inner.M14 + outer.M12 * inner.M24 + outer.M14,
+        outer.M21 * inner.M11 + outer.M22 * inner.M21,
+        outer.M21 * inner.M12 + outer.M22 * inner.M22,
+        0,
+        outer.M21 * inner.M14 + outer.M22 * inner.M24 + outer.M24,
+        0, 0, 1, 0,
+        0, 0, 0, 1);
+
+    private static float XformScale(Matrix4? xf) =>
+        xf.HasValue ? (float)Math.Sqrt(xf.Value.M11 * xf.Value.M11 + xf.Value.M21 * xf.Value.M21) : 1f;
+
+    private static float XformRotationDeg(Matrix4? xf) =>
+        xf.HasValue ? (float)(Math.Atan2(xf.Value.M21, xf.Value.M11) * 180 / Math.PI) : 0f;
 
     private static Vector3 ApplyXform(Vector3 pt, Matrix4 xform)
     {
@@ -205,36 +241,149 @@ public static class DxfParser
         scene.Polylines.Add(poly);
     }
 
-    private static void AddSpline(DxfScene scene, Spline e, Layer? bl)
+    private static void AddSpline(DxfScene scene, Spline e, Layer? bl, Matrix4? xf = null)
     {
         var pts = e.PolygonalVertexes(64);
         if (pts == null || pts.Count < 2) return;
         var poly = new ScenePolyline { Color = ResolveColor(e, bl) };
         poly.Layer = LayerOf(e);
         foreach (var p in pts)
-            poly.Points.Add(new SKPoint((float)p.X, (float)p.Y));
+        {
+            var q = xf.HasValue ? ApplyXform(new Vector3(p.X, p.Y, 0), xf.Value) : new Vector3(p.X, p.Y, 0);
+            poly.Points.Add(new SKPoint((float)q.X, (float)q.Y));
+        }
         scene.Polylines.Add(poly);
     }
 
-    private static void AddText(DxfScene scene, Text e, Layer? bl)
+    // POINT has no extent of its own, so it is drawn as a small cross. The arm length is
+    // in drawing units here because the scene has no notion of zoom; it is deliberately
+    // tiny so a point never reads as geometry.
+    private static void AddPoint(DxfScene scene, Point e, Layer? bl, Matrix4? xf = null)
     {
-        if (string.IsNullOrWhiteSpace(e.Value)) return;
-        double h = e.Height > 0 ? e.Height : 2.5;
-        scene.Texts.Add(new SceneText(
-            (float)e.Position.X, (float)e.Position.Y,
-            (float)h, (float)e.Rotation,
-            CadGeometry.DecodeDxfText(e.Value), ResolveColor(e, bl)) { Layer = LayerOf(e) });
+        var p = xf.HasValue ? ApplyXform(e.Position, xf.Value) : e.Position;
+        var color = ResolveColor(e, bl);
+        string layer = LayerOf(e);
+        float x = (float)p.X, y = (float)p.Y;
+        float r = 0.5f * XformScale(xf);
+        scene.Lines.Add(new SceneLine(x - r, y, x + r, y, color) { Layer = layer });
+        scene.Lines.Add(new SceneLine(x, y - r, x, y + r, color) { Layer = layer });
     }
 
-    private static void AddMText(DxfScene scene, MText e, Layer? bl)
+    private static (TextHAlign H, TextVAlign V) MapAlignment(TextAlignment a) => a switch
+    {
+        TextAlignment.TopLeft        => (TextHAlign.Left,   TextVAlign.Top),
+        TextAlignment.TopCenter      => (TextHAlign.Center, TextVAlign.Top),
+        TextAlignment.TopRight       => (TextHAlign.Right,  TextVAlign.Top),
+        TextAlignment.MiddleLeft     => (TextHAlign.Left,   TextVAlign.Middle),
+        TextAlignment.MiddleCenter   => (TextHAlign.Center, TextVAlign.Middle),
+        TextAlignment.MiddleRight    => (TextHAlign.Right,  TextVAlign.Middle),
+        TextAlignment.BottomLeft     => (TextHAlign.Left,   TextVAlign.Bottom),
+        TextAlignment.BottomCenter   => (TextHAlign.Center, TextVAlign.Bottom),
+        TextAlignment.BottomRight    => (TextHAlign.Right,  TextVAlign.Bottom),
+        TextAlignment.BaselineCenter => (TextHAlign.Center, TextVAlign.Baseline),
+        TextAlignment.BaselineRight  => (TextHAlign.Right,  TextVAlign.Baseline),
+        TextAlignment.Middle         => (TextHAlign.Center, TextVAlign.Middle),
+        _                            => (TextHAlign.Left,   TextVAlign.Baseline),
+    };
+
+    private static void AddText(DxfScene scene, Text e, Layer? bl, Matrix4? xf = null)
+    {
+        if (string.IsNullOrWhiteSpace(e.Value)) return;
+        var p = xf.HasValue ? ApplyXform(e.Position, xf.Value) : e.Position;
+        double h = (e.Height > 0 ? e.Height : 2.5) * XformScale(xf);
+        var (ha, va) = MapAlignment(e.Alignment);
+        scene.Texts.Add(new SceneText(
+            (float)p.X, (float)p.Y,
+            (float)h, (float)e.Rotation + XformRotationDeg(xf),
+            CadGeometry.DecodeDxfText(e.Value), ResolveColor(e, bl))
+            { Layer = LayerOf(e), HAlign = ha, VAlign = va });
+    }
+
+    private static void AddMText(DxfScene scene, MText e, Layer? bl, Matrix4? xf = null)
     {
         var raw = CadGeometry.DecodeDxfText(e.PlainText());
         if (string.IsNullOrWhiteSpace(raw)) return;
-        double h = e.Height > 0 ? e.Height : 2.5;
-        scene.Texts.Add(new SceneText(
-            (float)e.Position.X, (float)e.Position.Y,
-            (float)h, (float)e.Rotation,
-            raw, ResolveColor(e, bl)) { Layer = LayerOf(e) });
+
+        var p = xf.HasValue ? ApplyXform(e.Position, xf.Value) : e.Position;
+        double h = (e.Height > 0 ? e.Height : 2.5) * XformScale(xf);
+        float rot = (float)e.Rotation + XformRotationDeg(xf);
+        var color = ResolveColor(e, bl);
+        string layer = LayerOf(e);
+        var (ha, va) = MapMTextAttachment(e.AttachmentPoint);
+
+        double wrapWidth = e.RectangleWidth * XformScale(xf);
+        var lines = CadGeometry.WrapMText(raw, h, wrapWidth);
+
+        // Successive lines step down the page along the text's own reading direction, so
+        // rotated multi-line notes stack correctly instead of marching off horizontally.
+        double rad = rot * Math.PI / 180;
+        double stepX = Math.Sin(rad) * h * 1.2, stepY = -Math.Cos(rad) * h * 1.2;
+
+        for (int i = 0; i < lines.Count; i++)
+        {
+            if (string.IsNullOrWhiteSpace(lines[i])) continue;
+            scene.Texts.Add(new SceneText(
+                (float)(p.X + stepX * i), (float)(p.Y + stepY * i),
+                (float)h, rot, lines[i], color)
+                { Layer = layer, HAlign = ha, VAlign = va });
+        }
+    }
+
+    private static (TextHAlign H, TextVAlign V) MapMTextAttachment(MTextAttachmentPoint a) => a switch
+    {
+        MTextAttachmentPoint.TopLeft      => (TextHAlign.Left,   TextVAlign.Top),
+        MTextAttachmentPoint.TopCenter    => (TextHAlign.Center, TextVAlign.Top),
+        MTextAttachmentPoint.TopRight     => (TextHAlign.Right,  TextVAlign.Top),
+        MTextAttachmentPoint.MiddleLeft   => (TextHAlign.Left,   TextVAlign.Middle),
+        MTextAttachmentPoint.MiddleCenter => (TextHAlign.Center, TextVAlign.Middle),
+        MTextAttachmentPoint.MiddleRight  => (TextHAlign.Right,  TextVAlign.Middle),
+        MTextAttachmentPoint.BottomLeft   => (TextHAlign.Left,   TextVAlign.Bottom),
+        MTextAttachmentPoint.BottomCenter => (TextHAlign.Center, TextVAlign.Bottom),
+        MTextAttachmentPoint.BottomRight  => (TextHAlign.Right,  TextVAlign.Bottom),
+        _                                 => (TextHAlign.Left,   TextVAlign.Top),
+    };
+
+    // A HATCH's fill pattern isn't reproduced, but its boundary is real geometry -- drawing
+    // the outline is strictly better than rendering nothing at all and silently losing the
+    // region, which is what happened before.
+    private static void AddHatch(DxfScene scene, Hatch e)
+    {
+        foreach (var path in e.BoundaryPaths)
+        {
+            foreach (var edge in path.Edges)
+            {
+                EntityObject? ent = null;
+                try { ent = edge.ConvertTo(); } catch { }
+                if (ent == null) continue;
+                ent.Layer = e.Layer;
+                ent.Color = e.Color;
+                AddEntityFromBlock(scene, ent, e.Layer, Matrix4.Identity, 0);
+            }
+        }
+    }
+
+    // A DIMENSION carries an anonymous block holding the exact geometry AutoCAD drew for
+    // it (dimension line, extension lines, ticks, value text), so rendering that block is
+    // more faithful than re-deriving the presentation from the measurement points.
+    private static void AddDimension(DxfScene scene, Dimension e)
+    {
+        if (e.Block == null) return;
+
+        int lineStart = scene.Lines.Count;
+        int textStart = scene.Texts.Count;
+
+        foreach (var entity in e.Block.Entities)
+            AddEntityFromBlock(scene, entity, e.Layer, Matrix4.Identity, 0);
+
+        // Same semantic exemption the legacy parser applies: a ROUTE-dimstyle dimension
+        // measures a CNC toolpath distance, not a part edge, and can sit far outside the
+        // part's own footprint -- it still draws, it just must not drive the fit view.
+        if (e.Style?.Name?.StartsWith("ROUTE", StringComparison.OrdinalIgnoreCase) != true) return;
+
+        for (int i = lineStart; i < scene.Lines.Count; i++)
+            scene.Lines[i] = scene.Lines[i] with { BoundsExempt = true };
+        for (int i = textStart; i < scene.Texts.Count; i++)
+            scene.Texts[i] = scene.Texts[i] with { BoundsExempt = true };
     }
 
     // --- Color resolution ---

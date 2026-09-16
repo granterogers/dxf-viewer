@@ -301,13 +301,22 @@ public partial class DxfTabControl : UserControl
         }
     }
 
+    // Created once: SKTypeface.FromFamilyName does real font lookup, and this used to run
+    // on every frame -- including every mouse-move during a pan.
+    internal static readonly SKTypeface TextTypeface = SKTypeface.FromFamilyName("Segoe UI");
+
     private static void DrawTexts(SKCanvas canvas, DxfScene scene, HashSet<string>? vis)
     {
         if (scene.Texts.Count == 0) return;
-        var tf = SKTypeface.FromFamilyName("Segoe UI");
 
         // Placed text positions for collision avoidance (in DXF coords)
         var placed = new List<(float X, float Y, float Footprint)>();
+
+        using var textPaint = new SKPaint
+        {
+            IsAntialias = true,
+            Typeface    = TextTypeface,
+        };
 
         foreach (var t in scene.Texts)
         {
@@ -319,21 +328,19 @@ public partial class DxfTabControl : UserControl
             placed.Add(placement);
             float ax = placement.X, ay = placement.Y;
 
-            using var textPaint = new SKPaint
-            {
-                IsAntialias = true,
-                Color       = t.Color,
-                TextSize    = sz,
-                Typeface    = tf,
-            };
+            textPaint.Color    = t.Color;
+            textPaint.TextSize = sz;
+
+            var (dx, dy) = CadGeometry.AlignOffset(
+                t.HAlign, t.VAlign, textPaint.MeasureText(t.Value), sz);
+
             canvas.Save();
             canvas.Translate(ax, -ay);
             if (MathF.Abs(t.Rotation) > 0.01f)
                 canvas.RotateDegrees(-t.Rotation);
-            canvas.DrawText(t.Value, 0f, 0f, textPaint);
+            canvas.DrawText(t.Value, dx, dy, textPaint);
             canvas.Restore();
         }
-        tf?.Dispose();
     }
 
     // --- Layer panel toggle ---

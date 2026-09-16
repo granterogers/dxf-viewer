@@ -29,20 +29,6 @@ public class MainViewModel : INotifyPropertyChanged
         set { _alwaysOnTop = value; OnPropertyChanged(); }
     }
 
-    private double _volume = AppSettings.Volume;
-    public double Volume
-    {
-        get => _volume;
-        set { _volume = value; AppSettings.Volume = value; OnPropertyChanged(); }
-    }
-
-    private bool _muted = AppSettings.Muted;
-    public bool Muted
-    {
-        get => _muted;
-        set { _muted = value; AppSettings.Muted = value; OnPropertyChanged(); }
-    }
-
     public ICommand OpenFileCommand { get; }
     public ICommand CloseTabCommand { get; }
     public ICommand NextTabCommand { get; }
@@ -52,7 +38,6 @@ public class MainViewModel : INotifyPropertyChanged
     public ICommand NavPrevCommand { get; }
     public ICommand NavNextCommand { get; }
     public ICommand OpenWithMicrovellumCommand { get; }
-    public ICommand ToggleMuteCommand { get; }
 
     public MainViewModel()
     {
@@ -65,7 +50,6 @@ public class MainViewModel : INotifyPropertyChanged
         NavPrevCommand = new RelayCommand(_ => ActiveTab?.NavigatePrev(), _ => ActiveTab != null);
         NavNextCommand = new RelayCommand(_ => ActiveTab?.NavigateNext(), _ => ActiveTab != null);
         OpenWithMicrovellumCommand = new RelayCommand(_ => OpenWithMicrovellum(), _ => ActiveTab?.IsLoaded == true);
-        ToggleMuteCommand = new RelayCommand(_ => Muted = !Muted);
     }
 
     private void OpenFile()
@@ -115,7 +99,7 @@ public class MainViewModel : INotifyPropertyChanged
         catch (Exception ex)
         {
             MessageBox.Show($"Failed to launch Microvellum:\n{ex.Message}",
-                "Launch Error", MessageBoxButton.OK, Muted ? MessageBoxImage.None : MessageBoxImage.Error);
+                "Launch Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 

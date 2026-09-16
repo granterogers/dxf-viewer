@@ -40,12 +40,32 @@
         <Setter Property="Template">
           <Setter.Value>
             <ControlTemplate TargetType="ToggleButton">
-              <Border Background="{TemplateBinding Background}"
+              <Border x:Name="Chrome"
+                      Background="{TemplateBinding Background}"
                       BorderBrush="{TemplateBinding BorderBrush}"
                       BorderThickness="{TemplateBinding BorderThickness}"
                       Padding="{TemplateBinding Padding}">
                 <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
               </Border>
+              <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                  <Setter TargetName="Chrome" Property="Background" Value="#1976D2"/>
+                </Trigger>
+                <!-- Checked state has to repaint the template's own Border: the style's
+                     Background setter is what TemplateBinding reads, so a plain Setter on
+                     the ToggleButton is overridden by the hover trigger above. -->
+                <Trigger Property="IsChecked" Value="True">
+                  <Setter TargetName="Chrome" Property="Background"  Value="#E07820"/>
+                  <Setter TargetName="Chrome" Property="BorderBrush" Value="#A85510"/>
+                </Trigger>
+                <MultiTrigger>
+                  <MultiTrigger.Conditions>
+                    <Condition Property="IsChecked"   Value="True"/>
+                    <Condition Property="IsMouseOver" Value="True"/>
+                  </MultiTrigger.Conditions>
+                  <Setter TargetName="Chrome" Property="Background" Value="#F08A2E"/>
+                </MultiTrigger>
+              </ControlTemplate.Triggers>
             </ControlTemplate>
           </Setter.Value>
         </Setter>

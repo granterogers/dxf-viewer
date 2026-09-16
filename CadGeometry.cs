@@ -73,6 +73,59 @@ internal static class CadGeometry
         return (ax, ay, footprint);
     }
 
+    // MText stores its content as one formatted blob plus a wrap column. PlainText()
+    // flattens the formatting but keeps the hard breaks, so split on those first and then
+    // soft-wrap each paragraph to the stored column width. Width is estimated from the
+    // glyph height rather than measured, because wrapping happens at parse time where no
+    // font or canvas exists yet -- close enough for the short labels these files carry.
+    public static List<string> WrapMText(string text, double height, double wrapWidth)
+    {
+        var paragraphs = text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+        var outLines = new List<string>();
+
+        if (wrapWidth <= 1e-6 || height <= 1e-9)
+        {
+            outLines.AddRange(paragraphs);
+            return outLines;
+        }
+
+        int maxChars = Math.Max(1, (int)(wrapWidth / (height * 0.6)));
+        foreach (var para in paragraphs)
+        {
+            if (para.Length <= maxChars) { outLines.Add(para); continue; }
+
+            var line = new System.Text.StringBuilder();
+            foreach (var word in para.Split(' '))
+            {
+                if (line.Length > 0 && line.Length + 1 + word.Length > maxChars)
+                {
+                    outLines.Add(line.ToString());
+                    line.Clear();
+                }
+                if (line.Length > 0) line.Append(' ');
+                line.Append(word);
+            }
+            if (line.Length > 0) outLines.Add(line.ToString());
+        }
+        return outLines;
+    }
+
+    // Offset from a text's stored anchor point to the baseline-left origin Skia draws at,
+    // expressed in the text's own rotated frame with screen-Y (down-positive) convention.
+    public static (float Dx, float Dy) AlignOffset(TextHAlign h, TextVAlign v, float width, float height) =>
+        (h switch
+         {
+             TextHAlign.Center => -width / 2f,
+             TextHAlign.Right  => -width,
+             _                 => 0f,
+         },
+         v switch
+         {
+             TextVAlign.Top    => height,
+             TextVAlign.Middle => height / 2f,
+             _                 => 0f,
+         });
+
     public static SKColor AciIndexToSKColor(short idx) => idx switch
     {
         1  => new SKColor(255,   0,   0),

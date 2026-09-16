@@ -354,10 +354,19 @@ public readonly record struct SceneLine(float X1, float Y1, float X2, float Y2, 
     // IsDefaultHiddenLayer, without changing how or whether it renders.
     public bool BoundsExempt { get; init; } = false;
 }
+// Where (X,Y) sits relative to the rendered string. DXF stores justification separately
+// from the insertion point, so the same coordinate means "left edge" or "center" or
+// "right edge" depending on these -- drawing every string left-aligned offsets any
+// centered or right-aligned label by roughly its own width.
+public enum TextHAlign { Left, Center, Right }
+public enum TextVAlign { Baseline, Bottom, Middle, Top }
+
 public readonly record struct SceneText(float X, float Y, float Height, float Rotation, string Value, SKColor Color)
 {
     public string Layer { get; init; } = "";
     public bool BoundsExempt { get; init; } = false;
+    public TextHAlign HAlign { get; init; } = TextHAlign.Left;
+    public TextVAlign VAlign { get; init; } = TextVAlign.Baseline;
 }
 
 public class ScenePolyline

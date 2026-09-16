@@ -20,6 +20,10 @@ public static class Program
             return RunRenderTest(args[1], args[2], page, az, el);
         }
 
+        // --make-fixture <out.dxf>
+        if (args.Length >= 2 && args[0] == "--make-fixture")
+            return TestFixture.Write(args[1]);
+
         string? initialFile = args.Length >= 1 && File.Exists(args[0]) ? args[0] : null;
 
         var app = new App();
@@ -205,8 +209,12 @@ public static class Program
 
         if (scene.Texts.Count > 0)
         {
-            var tf = SKTypeface.FromFamilyName("Segoe UI");
             var placed = new List<(float X, float Y, float Footprint)>();
+            using var textPaint = new SKPaint
+            {
+                IsAntialias = true,
+                Typeface = DxfTabControl.TextTypeface,
+            };
             foreach (var t in scene.Texts)
             {
                 if (string.IsNullOrEmpty(t.Value)) continue;
@@ -215,21 +223,17 @@ public static class Program
                 var placement = CadGeometry.PlaceText(placed, t.X, t.Y, sz, t.Rotation, t.Value);
                 placed.Add(placement);
                 float ax = placement.X, ay = placement.Y;
-                using var textPaint = new SKPaint
-                {
-                    IsAntialias = true,
-                    Color = t.Color,
-                    TextSize = sz,
-                    Typeface = tf,
-                };
+                textPaint.Color = t.Color;
+                textPaint.TextSize = sz;
+                var (dx, dy) = CadGeometry.AlignOffset(
+                    t.HAlign, t.VAlign, textPaint.MeasureText(t.Value), sz);
                 canvas.Save();
                 canvas.Translate(ax, -ay);
                 if (MathF.Abs(t.Rotation) > 0.01f)
                     canvas.RotateDegrees(-t.Rotation);
-                canvas.DrawText(t.Value, 0, 0, textPaint);
+                canvas.DrawText(t.Value, dx, dy, textPaint);
                 canvas.Restore();
             }
-            tf?.Dispose();
         }
     }
 }
