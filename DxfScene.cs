@@ -30,6 +30,29 @@ public class DxfScene
     // Unique layers sorted: BORDER* first, ROUTE* second, 2D_DIM* third, rest alphabetically.
     public List<(string Name, SKColor Color)> Layers { get; private set; } = new();
 
+    // What the parser actually did and what it had to skip. Without this an unsupported
+    // entity renders as nothing and the user cannot tell "this file has none" from "we
+    // don't draw those" -- a dangerous ambiguity in a tool used to verify exports.
+    public string ParserUsed = "";
+    public readonly SortedSet<string> UnsupportedEntities = new(StringComparer.OrdinalIgnoreCase);
+    public string? ParseWarning;
+
+    public int EntityCount => Circles.Count + Arcs.Count + Lines.Count + Polylines.Count + Texts.Count + Wires3D.Count;
+
+    public string DiagnosticsSummary
+    {
+        get
+        {
+            var parts = new List<string> { $"parser: {(string.IsNullOrEmpty(ParserUsed) ? "unknown" : ParserUsed)}" };
+            parts.Add($"{EntityCount} entities");
+            parts.Add($"{Layers.Count} layers");
+            if (UnsupportedEntities.Count > 0)
+                parts.Add("skipped: " + string.Join(", ", UnsupportedEntities));
+            if (!string.IsNullOrEmpty(ParseWarning)) parts.Add("note: " + ParseWarning);
+            return string.Join("  ·  ", parts);
+        }
+    }
+
     public void ComputeBounds()
     {
         // Microvellum's own viewer recolors known cabinetry-cutlist layer names

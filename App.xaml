@@ -6,6 +6,85 @@
     <ResourceDictionary>
       <local:BoolToVisibilityConverter x:Key="BoolToVisibility"/>
 
+      <!-- ===== Design tokens =====
+           Every color, spacing step and text size in the app resolves here. Previously
+           these hex values were repeated across three XAML files and two C# render paths,
+           so a change had to be made in five places to stay consistent. -->
+      <Color x:Key="CanvasBgColor">#12121E</Color>
+      <SolidColorBrush x:Key="CanvasBg"     Color="#12121E"/>
+      <SolidColorBrush x:Key="PanelBg"      Color="#1E1E30"/>
+      <SolidColorBrush x:Key="ToolbarBg"    Color="#252535"/>
+      <SolidColorBrush x:Key="WindowBg"     Color="#1E1E1E"/>
+      <SolidColorBrush x:Key="TabStripBg"   Color="#1A1A2E"/>
+      <SolidColorBrush x:Key="TabBg"        Color="#252540"/>
+      <SolidColorBrush x:Key="StrokeSubtle" Color="#303048"/>
+      <SolidColorBrush x:Key="StrokeStrong" Color="#404055"/>
+      <SolidColorBrush x:Key="TextPrimary"  Color="#D0D0E0"/>
+      <SolidColorBrush x:Key="TextMuted"    Color="#9090A0"/>
+      <SolidColorBrush x:Key="TextFaint"    Color="#606070"/>
+      <SolidColorBrush x:Key="AccentOrange" Color="#E07820"/>
+      <SolidColorBrush x:Key="AccentOrangeDim" Color="#A85510"/>
+      <SolidColorBrush x:Key="AccentBlue"   Color="#1565C0"/>
+      <SolidColorBrush x:Key="AccentBlueDim" Color="#0D47A1"/>
+      <SolidColorBrush x:Key="ErrorFg"      Color="#CC4444"/>
+      <SolidColorBrush x:Key="ErrorFgDim"   Color="#AA6666"/>
+
+      <!-- 4px spacing scale -->
+      <Thickness x:Key="Space1">4</Thickness>
+      <Thickness x:Key="Space2">8</Thickness>
+      <Thickness x:Key="Space3">12</Thickness>
+      <Thickness x:Key="GutterH">8,4</Thickness>
+
+      <!-- Type scale: label / body / heading -->
+      <system:Double xmlns:system="clr-namespace:System;assembly=mscorlib" x:Key="FontLabel">11</system:Double>
+      <system:Double xmlns:system="clr-namespace:System;assembly=mscorlib" x:Key="FontBody">12</system:Double>
+      <system:Double xmlns:system="clr-namespace:System;assembly=mscorlib" x:Key="FontHeading">16</system:Double>
+
+      <Style x:Key="LabelText" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="Segoe UI"/>
+        <Setter Property="FontSize" Value="{StaticResource FontLabel}"/>
+        <Setter Property="Foreground" Value="{StaticResource TextMuted}"/>
+      </Style>
+      <Style x:Key="BodyText" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="Segoe UI"/>
+        <Setter Property="FontSize" Value="{StaticResource FontBody}"/>
+        <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+      </Style>
+      <Style x:Key="HeadingText" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="Segoe UI"/>
+        <Setter Property="FontSize" Value="{StaticResource FontHeading}"/>
+        <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+      </Style>
+
+
+      <!-- Small button used inside side panels -->
+      <Style x:Key="PanelButton" TargetType="Button">
+        <Setter Property="Padding" Value="6,2"/>
+        <Setter Property="FontSize" Value="10"/>
+        <Setter Property="Background" Value="{StaticResource TabBg}"/>
+        <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource StrokeStrong}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="Button">
+              <Border x:Name="B" Background="{TemplateBinding Background}"
+                      BorderBrush="{TemplateBinding BorderBrush}"
+                      BorderThickness="{TemplateBinding BorderThickness}"
+                      Padding="{TemplateBinding Padding}">
+                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              </Border>
+              <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                  <Setter TargetName="B" Property="Background" Value="{StaticResource StrokeStrong}"/>
+                </Trigger>
+              </ControlTemplate.Triggers>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+
       <!-- Shared blue button template — no hover/press color changes -->
       <ControlTemplate x:Key="BlueButtonTemplate" TargetType="Button">
         <Border Background="{TemplateBinding Background}"

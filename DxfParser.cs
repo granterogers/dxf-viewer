@@ -13,6 +13,8 @@ public static class DxfParser
 
     private static DxfScene ParseScene(string filePath)
     {
+        string? fallbackReason = null;
+
         // Try netDxf first -- handles modern DXF with a $ACADVER header.
         try
         {
@@ -22,15 +24,19 @@ public static class DxfParser
 
             if (HasAnyEntities(doc))
             {
-                var scene = new DxfScene();
+                var scene = new DxfScene { ParserUsed = "netDxf (modern DXF)" };
                 ParseDocument(scene, doc);
                 scene.ComputeBounds();
                 return scene;
             }
+            fallbackReason = "no entities found by netDxf";
         }
-        catch { }
+        catch (Exception ex) { fallbackReason = ex.Message; }
 
-        return ParseLegacy(filePath);
+        var legacy = ParseLegacy(filePath);
+        legacy.ParserUsed = "legacy group-code (pre-R12 DXF)";
+        if (fallbackReason != null) legacy.ParseWarning = $"netDxf declined this file ({fallbackReason})";
+        return legacy;
     }
 
     private static bool HasAnyEntities(DxfDocument doc) =>
@@ -77,6 +83,7 @@ public static class DxfParser
             case Text e:       AddText(scene, e, blockLayer, xform); break;
             case MText e:      AddMText(scene, e, blockLayer, xform); break;
             case Insert e:     AddInsert(scene, e, xform, depth + 1); break;
+            default:           scene.UnsupportedEntities.Add(entity.Type.ToString()); break;
         }
     }
 

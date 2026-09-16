@@ -1,4 +1,4 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows.Media;
 using SkiaSharp;
@@ -10,6 +10,10 @@ public class LayerInfo : INotifyPropertyChanged
     public string Name       { get; }
     public Brush  ColorBrush { get; }
 
+    // How many scene primitives sit on this layer. Shown in the panel so an empty or
+    // near-empty layer is obvious without toggling it off to find out.
+    public int EntityCount { get; set; }
+
     private bool _isVisible;
     public bool IsVisible
     {
@@ -17,9 +21,10 @@ public class LayerInfo : INotifyPropertyChanged
         set { _isVisible = value; OnPropertyChanged(); }
     }
 
-    public LayerInfo(string name, SKColor color)
+    public LayerInfo(string name, SKColor color, int entityCount = 0)
     {
         Name = name;
+        EntityCount = entityCount;
         ColorBrush = new SolidColorBrush(Color.FromRgb(color.Red, color.Green, color.Blue));
         _isVisible = DefaultVisible(name);
     }

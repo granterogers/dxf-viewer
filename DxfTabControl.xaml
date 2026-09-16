@@ -2,158 +2,207 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:DxfViewer"
-             Background="#12121E">
+             Background="{StaticResource CanvasBg}">
 
   <Grid>
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto"/>
       <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
     </Grid.RowDefinitions>
 
     <!-- Page (Layout) selector, shown only for documents with more than one page -->
-    <Border Grid.Row="0" Background="#1E1E30" BorderBrush="#303048" BorderThickness="0,0,0,1"
+    <Border Grid.Row="0" Background="{StaticResource PanelBg}"
+            BorderBrush="{StaticResource StrokeSubtle}" BorderThickness="0,0,0,1"
             Visibility="{Binding HasMultiplePages, Converter={StaticResource BoolToVisibility}}">
       <StackPanel Orientation="Horizontal" Margin="8,4,8,4">
-        <TextBlock Text="Page" Foreground="#9090A0" FontSize="11" FontFamily="Segoe UI"
+        <TextBlock Text="Page" Style="{StaticResource LabelText}"
                    VerticalAlignment="Center" Margin="0,0,6,0"/>
         <ComboBox ItemsSource="{Binding PageNames}"
                   SelectedIndex="{Binding CurrentPageIndex, Mode=TwoWay}"
-                  Width="180" FontSize="11" FontFamily="Segoe UI"/>
+                  Width="180" FontSize="{StaticResource FontLabel}" FontFamily="Segoe UI"/>
       </StackPanel>
     </Border>
 
     <!-- Content row: canvas + layer panel side by side -->
     <Grid Grid.Row="1">
-    <Grid.ColumnDefinitions>
-      <ColumnDefinition Width="*"/>
-      <ColumnDefinition x:Name="LayerPanelCol" Width="200"/>
-    </Grid.ColumnDefinitions>
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*"/>
+        <ColumnDefinition Width="Auto"/>
+        <ColumnDefinition x:Name="LayerPanelCol" Width="220" MinWidth="20"/>
+      </Grid.ColumnDefinitions>
 
-    <!-- Loading state -->
-    <StackPanel Grid.Column="0"
-                VerticalAlignment="Center" HorizontalAlignment="Center"
-                Visibility="{Binding IsLoading, Converter={StaticResource BoolToVisibility}}">
-      <TextBlock Text="Loading..." FontSize="16" Foreground="#888" HorizontalAlignment="Center"/>
-    </StackPanel>
+      <!-- Loading state -->
+      <StackPanel Grid.Column="0"
+                  VerticalAlignment="Center" HorizontalAlignment="Center"
+                  Visibility="{Binding IsLoading, Converter={StaticResource BoolToVisibility}}">
+        <!-- Indeterminate bar rather than a spinner: parsing reports no progress, and a
+             fake percentage would be a lie about work we cannot measure. -->
+        <ProgressBar IsIndeterminate="True" Width="180" Height="3"
+                     Background="Transparent" BorderThickness="0"
+                     Foreground="{StaticResource AccentOrange}"/>
+        <TextBlock Text="Reading drawing" Style="{StaticResource BodyText}"
+                   HorizontalAlignment="Center" Margin="0,12,0,0"/>
+        <TextBlock Text="{Binding Title}" Style="{StaticResource LabelText}"
+                   HorizontalAlignment="Center" Margin="0,4,0,0"/>
+      </StackPanel>
 
-    <!-- Error state -->
-    <StackPanel Grid.Column="0"
-                VerticalAlignment="Center" HorizontalAlignment="Center"
-                Visibility="{Binding IsError, Converter={StaticResource BoolToVisibility}}"
-                MaxWidth="600">
-      <TextBlock Text="Failed to load file" FontSize="16" Foreground="#CC4444" HorizontalAlignment="Center"/>
-      <TextBlock Text="{Binding ErrorMessage}" FontSize="12" Foreground="#AA6666"
-                 HorizontalAlignment="Center" TextWrapping="Wrap" Margin="0,6,0,0"/>
-    </StackPanel>
+      <!-- Error state -->
+      <Border Grid.Column="0"
+              Visibility="{Binding IsError, Converter={StaticResource BoolToVisibility}}"
+              VerticalAlignment="Center" HorizontalAlignment="Center"
+              MaxWidth="560"
+              Background="{StaticResource PanelBg}"
+              BorderBrush="{StaticResource StrokeSubtle}" BorderThickness="1"
+              Padding="20,16">
+        <StackPanel>
+          <TextBlock Text="Couldn't open this drawing"
+                     FontFamily="Segoe UI" FontSize="{StaticResource FontHeading}"
+                     Foreground="{StaticResource ErrorFg}"/>
+          <TextBlock Text="{Binding Title}" Style="{StaticResource LabelText}" Margin="0,6,0,0"/>
+          <TextBlock Text="{Binding ErrorMessage}"
+                     FontFamily="Segoe UI" FontSize="{StaticResource FontLabel}"
+                     Foreground="{StaticResource ErrorFgDim}"
+                     TextWrapping="Wrap" Margin="0,10,0,0"/>
+        </StackPanel>
+      </Border>
 
-    <!-- SkiaSharp canvas -->
-    <Grid Grid.Column="0" x:Name="SkiaHost"
-          Visibility="{Binding IsLoaded, Converter={StaticResource BoolToVisibility}}"
-          Background="#12121E"
-          SizeChanged="SkiaHost_SizeChanged"
-          MouseDown="Canvas_MouseDown"
-          MouseMove="Canvas_MouseMove"
-          MouseUp="Canvas_MouseUp"
-          MouseWheel="Canvas_MouseWheel"
-          Focusable="True">
-      <Image x:Name="SkiaImage" Stretch="Fill"/>
-      <TextBlock Text="3D — drag to rotate · middle-drag to pan · wheel to zoom"
-                 Visibility="{Binding IsScene3D, Converter={StaticResource BoolToVisibility}}"
-                 Foreground="#9090A0" FontSize="11" FontFamily="Segoe UI"
-                 HorizontalAlignment="Left" VerticalAlignment="Top"
-                 Margin="10,8,0,0" IsHitTestVisible="False"/>
+      <!-- SkiaSharp canvas -->
+      <Grid Grid.Column="0" x:Name="SkiaHost"
+            Visibility="{Binding IsLoaded, Converter={StaticResource BoolToVisibility}}"
+            Background="{StaticResource CanvasBg}"
+            SizeChanged="SkiaHost_SizeChanged"
+            MouseDown="Canvas_MouseDown"
+            MouseMove="Canvas_MouseMove"
+            MouseUp="Canvas_MouseUp"
+            MouseWheel="Canvas_MouseWheel"
+            Focusable="True">
+        <Image x:Name="SkiaImage" Stretch="Fill"/>
+        <TextBlock Text="3D — drag to rotate · middle-drag to pan · wheel to zoom"
+                   Visibility="{Binding IsScene3D, Converter={StaticResource BoolToVisibility}}"
+                   Style="{StaticResource LabelText}"
+                   HorizontalAlignment="Left" VerticalAlignment="Top"
+                   Margin="10,8,0,0" IsHitTestVisible="False"/>
+      </Grid>
+
+      <!-- Drag handle for the layer panel -->
+      <GridSplitter Grid.Column="1" Width="4"
+                    HorizontalAlignment="Stretch"
+                    Background="Transparent"
+                    Cursor="SizeWE"/>
+
+      <!-- Layers panel -->
+      <Border Grid.Column="2" Background="{StaticResource PanelBg}"
+              BorderBrush="{StaticResource StrokeSubtle}" BorderThickness="1,0,0,0">
+        <DockPanel>
+
+          <!-- Chevron toggle on left edge of panel -->
+          <Button x:Name="LayerToggleBtn"
+                  DockPanel.Dock="Left"
+                  Width="20"
+                  Content="&#9664;"
+                  Click="LayerToggle_Click"
+                  Background="{StaticResource PanelBg}"
+                  Foreground="{StaticResource TextMuted}"
+                  BorderThickness="0"
+                  FontSize="10"
+                  VerticalContentAlignment="Center"
+                  HorizontalContentAlignment="Center"
+                  Cursor="Hand"/>
+
+          <!-- Panel body (hidden when collapsed) -->
+          <Grid x:Name="LayerPanelBody">
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="1"/>
+              <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <TextBlock Grid.Row="0" Text="LAYERS"
+                       Style="{StaticResource LabelText}"
+                       Margin="8,8,8,4"/>
+
+            <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="8,0,8,6" HorizontalAlignment="Left">
+              <Button Content="All On" Command="{Binding AllLayersOnCommand}"
+                      Style="{StaticResource PanelButton}" Margin="0,0,4,0"/>
+              <Button Content="All Off" Command="{Binding AllLayersOffCommand}"
+                      Style="{StaticResource PanelButton}"/>
+            </StackPanel>
+
+            <Border Grid.Row="2" Background="{StaticResource StrokeSubtle}"/>
+
+            <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto">
+              <ItemsControl ItemsSource="{Binding Layers}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate DataType="{x:Type local:LayerInfo}">
+                    <Border x:Name="Row" Background="Transparent" Height="26">
+                      <Grid>
+                        <Grid.ColumnDefinitions>
+                          <ColumnDefinition Width="Auto"/>
+                          <ColumnDefinition Width="Auto"/>
+                          <ColumnDefinition Width="*"/>
+                          <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <CheckBox Grid.Column="0"
+                                  IsChecked="{Binding IsVisible, Mode=TwoWay}"
+                                  VerticalAlignment="Center"
+                                  Margin="8,0,4,0"/>
+                        <Ellipse Grid.Column="1"
+                                 Width="8" Height="8"
+                                 Fill="{Binding ColorBrush}"
+                                 VerticalAlignment="Center"
+                                 Margin="0,0,6,0"/>
+                        <TextBlock Grid.Column="2"
+                                   Text="{Binding Name}"
+                                   Style="{StaticResource BodyText}"
+                                   FontSize="{StaticResource FontLabel}"
+                                   VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis"
+                                   ToolTip="{Binding Name}"/>
+                        <TextBlock Grid.Column="3"
+                                   Text="{Binding EntityCount}"
+                                   Style="{StaticResource LabelText}"
+                                   VerticalAlignment="Center"
+                                   Margin="4,0,8,0"/>
+                      </Grid>
+                    </Border>
+                    <DataTemplate.Triggers>
+                      <Trigger SourceName="Row" Property="IsMouseOver" Value="True">
+                        <Setter TargetName="Row" Property="Background" Value="{StaticResource TabBg}"/>
+                      </Trigger>
+                    </DataTemplate.Triggers>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
+          </Grid>
+        </DockPanel>
+      </Border>
     </Grid>
 
-    <!-- Layers panel -->
-    <Border Grid.Column="1" Background="#1E1E30"
-            BorderBrush="#303048" BorderThickness="1,0,0,0">
-      <DockPanel>
-
-        <!-- Chevron toggle on left edge of panel -->
-        <Button x:Name="LayerToggleBtn"
-                DockPanel.Dock="Left"
-                Width="20"
-                Content="&#9664;"
-                Click="LayerToggle_Click"
-                Background="#1E1E30"
-                Foreground="#9090A0"
-                BorderThickness="0"
-                FontSize="10"
-                VerticalContentAlignment="Center"
-                HorizontalContentAlignment="Center"
-                Cursor="Hand"/>
-
-        <!-- Panel body (hidden when collapsed) -->
-        <Grid x:Name="LayerPanelBody">
-          <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="1"/>
-            <RowDefinition Height="*"/>
-          </Grid.RowDefinitions>
-
-          <!-- Header -->
-          <TextBlock Grid.Row="0"
-                     Text="LAYERS"
-                     Foreground="#9090A0" FontSize="11"
-                     FontFamily="Segoe UI"
-                     Margin="8,8,8,4"/>
-
-          <!-- All On / All Off buttons -->
-          <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="8,0,8,4" HorizontalAlignment="Left">
-            <Button Content="All On"
-                    Command="{Binding AllLayersOnCommand}"
-                    Padding="6,2" Margin="0,0,4,0"
-                    FontSize="10"
-                    Background="#252540" Foreground="#D0D0E0"
-                    BorderBrush="#404055" BorderThickness="1"/>
-            <Button Content="All Off"
-                    Command="{Binding AllLayersOffCommand}"
-                    Padding="6,2"
-                    FontSize="10"
-                    Background="#252540" Foreground="#D0D0E0"
-                    BorderBrush="#404055" BorderThickness="1"/>
-          </StackPanel>
-
-          <!-- Separator -->
-          <Border Grid.Row="3" Background="#303048"/>
-
-          <!-- Layer list -->
-          <ScrollViewer Grid.Row="4" VerticalScrollBarVisibility="Auto">
-            <ItemsControl ItemsSource="{Binding Layers}">
-              <ItemsControl.ItemTemplate>
-                <DataTemplate DataType="{x:Type local:LayerInfo}">
-                  <Grid Height="28">
-                    <Grid.ColumnDefinitions>
-                      <ColumnDefinition Width="Auto"/>
-                      <ColumnDefinition Width="Auto"/>
-                      <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <CheckBox Grid.Column="0"
-                              IsChecked="{Binding IsVisible, Mode=TwoWay}"
-                              VerticalAlignment="Center"
-                              Margin="8,0,4,0"/>
-                    <Ellipse Grid.Column="1"
-                             Width="8" Height="8"
-                             Fill="{Binding ColorBrush}"
-                             VerticalAlignment="Center"
-                             Margin="0,0,6,0"/>
-                    <TextBlock Grid.Column="2"
-                               Text="{Binding Name}"
-                               Foreground="#D0D0E0"
-                               FontSize="11"
-                               FontFamily="Segoe UI"
-                               VerticalAlignment="Center"
-                               TextTrimming="CharacterEllipsis"/>
-                  </Grid>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-          </ScrollViewer>
-        </Grid>
-      </DockPanel>
+    <!-- Status bar: cursor position, zoom, and what the parser actually did -->
+    <Border Grid.Row="2" Background="{StaticResource PanelBg}"
+            BorderBrush="{StaticResource StrokeSubtle}" BorderThickness="0,1,0,0"
+            Visibility="{Binding IsLoaded, Converter={StaticResource BoolToVisibility}}">
+      <Grid Margin="8,3">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <TextBlock Grid.Column="0" Text="{Binding CursorReadout}"
+                   Style="{StaticResource LabelText}" MinWidth="190"
+                   FontFamily="Consolas"/>
+        <TextBlock Grid.Column="1" Text="{Binding ZoomReadout}"
+                   Style="{StaticResource LabelText}" MinWidth="90"
+                   FontFamily="Consolas"/>
+        <TextBlock Grid.Column="2" Text="{Binding SceneReadout}"
+                   Style="{StaticResource LabelText}"
+                   HorizontalAlignment="Right"
+                   TextTrimming="CharacterEllipsis"
+                   ToolTip="{Binding SceneReadout}"/>
+      </Grid>
     </Border>
-    </Grid>
   </Grid>
 </UserControl>

@@ -24,6 +24,10 @@ public static class Program
         if (args.Length >= 2 && args[0] == "--make-fixture")
             return TestFixture.Write(args[1]);
 
+        // --verify [--update]   (sweeps every sample and compares against the committed baseline)
+        if (args.Length >= 1 && args[0] == "--verify")
+            return RegressionSweep.Run(update: args.Contains("--update"));
+
         string? initialFile = args.Length >= 1 && File.Exists(args[0]) ? args[0] : null;
 
         var app = new App();
@@ -56,7 +60,7 @@ public static class Program
             var info = new SKImageInfo(W, H, SKColorType.Rgba8888, SKAlphaType.Premul);
             using var surface = SKSurface.Create(info);
             var canvas = surface.Canvas;
-            canvas.Clear(new SKColor(26, 26, 26)); // #1A1A1A background
+            canvas.Clear(Theme.CanvasBackground);
 
             if (scene.Is3D)
             {
@@ -140,7 +144,7 @@ public static class Program
             }
         }
         float depthRange = maxDepth - minDepth;
-        var bg = new SKColor(18, 18, 30);
+        var bg = Theme.CanvasBackground;
         foreach (var wire in visibleWires)
         {
             for (int i = 1; i < wire.Points.Count; i++)
@@ -185,7 +189,7 @@ public static class Program
         foreach (var c in scene.Circles)
         {
             if (!LayerInfo.DefaultVisible(c.Layer)) continue;
-            paint.Color = c.Color;
+            paint.Color = Theme.ForBackground(c.Color);
             paint.PathEffect = DashEffect(c.Dash, dashCache);
             canvas.DrawCircle(c.Cx, -c.Cy, c.R, paint);
         }
@@ -193,7 +197,7 @@ public static class Program
         foreach (var a in scene.Arcs)
         {
             if (!LayerInfo.DefaultVisible(a.Layer)) continue;
-            paint.Color = a.Color;
+            paint.Color = Theme.ForBackground(a.Color);
             paint.PathEffect = DashEffect(a.Dash, dashCache);
             var oval = new SKRect(a.Cx - a.R, -a.Cy - a.R, a.Cx + a.R, -a.Cy + a.R);
             float span = a.EndDeg > a.StartDeg
@@ -205,7 +209,7 @@ public static class Program
         foreach (var l in scene.Lines)
         {
             if (!LayerInfo.DefaultVisible(l.Layer)) continue;
-            paint.Color = l.Color;
+            paint.Color = Theme.ForBackground(l.Color);
             paint.PathEffect = DashEffect(l.Dash, dashCache);
             canvas.DrawLine(l.X1, -l.Y1, l.X2, -l.Y2, paint);
         }
@@ -214,7 +218,7 @@ public static class Program
         {
             if (p.Points.Count < 2) continue;
             if (!LayerInfo.DefaultVisible(p.Layer)) continue;
-            paint.Color = p.Color;
+            paint.Color = Theme.ForBackground(p.Color);
             paint.PathEffect = DashEffect(p.Dash, dashCache);
             if (p.CurvePath != null) { canvas.DrawPath(p.CurvePath, paint); continue; }
             using var path = new SKPath();
@@ -244,7 +248,7 @@ public static class Program
                 var placement = CadGeometry.PlaceText(placed, t.X, t.Y, sz, t.Rotation, t.Value);
                 placed.Add(placement);
                 float ax = placement.X, ay = placement.Y;
-                textPaint.Color = t.Color;
+                textPaint.Color = Theme.ForBackground(t.Color);
                 textPaint.TextSize = sz;
                 var (dx, dy) = CadGeometry.AlignOffset(
                     t.HAlign, t.VAlign, textPaint.MeasureText(t.Value), sz);

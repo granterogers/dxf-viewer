@@ -24,11 +24,28 @@ public partial class DxfTabControl : UserControl
     private float _camAzimuth = MathF.PI / 4f;    // 45 deg
     private float _camElevation = MathF.PI / 6f;  // 30 deg
     private float _camZoom = 1f;
+
+    // Zoom eases toward a target rather than snapping, so a wheel flick reads as motion
+    // instead of a jump. The 2D and 3D cameras each keep their own target.
+    private float _zoomTarget = 1f, _camZoomTarget = 1f;
+    private System.Windows.Threading.DispatcherTimer? _zoomTimer;
     private float _camPanX, _camPanY;
     private Vector3 _camCenter;
 
     private WriteableBitmap? _wbm;
     private bool _layerPanelExpanded = true;
+
+    // The backing bitmap is allocated in real device pixels, which on a scaled display is
+    // larger than the control's DIP size. All view math (pan, zoom, fit, hit positions)
+    // stays in DIPs and the canvas is scaled by this once per frame, so drawing code never
+    // has to care -- and hairline strokes land on real pixels instead of being upscaled.
+    private double _dpiX = 1.0, _dpiY = 1.0;
+
+    // Recorded 2D scene, replayed under the pan/zoom matrix. Rebuilt only when the scene
+    // or the visible-layer set actually changes -- previously every mouse-move re-walked
+    // every entity in the drawing.
+    private SKPicture? _picture;
+    private string? _pictureKey;
 
     public DxfTabControl()
     {
@@ -56,23 +73,37 @@ public partial class DxfTabControl : UserControl
     private void VmPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName != nameof(DxfTabViewModel.State)) return;
+        InvalidateScenePicture();
         if (_vm?.IsLoaded == true)
             Dispatcher.Invoke(FitToWindow);
         else
         {
-            _zoom = 1f; _panX = _panY = 0f;
+            _zoom = 1f; _zoomTarget = 1f; _panX = _panY = 0f;
             _camPanX = _camPanY = 0f;
             Dispatcher.Invoke(Render);
         }
     }
 
-    private void SkiaHost_SizeChanged(object sender, SizeChangedEventArgs e)
-    {
-        var w = (int)SkiaHost.ActualWidth;
-        var h = (int)SkiaHost.ActualHeight;
-        if (w <= 0 || h <= 0) return;
+    private void SkiaHost_SizeChanged(object sender, SizeChangedEventArgs e) => AllocateBitmap();
 
-        _wbm = new WriteableBitmap(w, h, 96, 96, PixelFormats.Pbgra32, null);
+    protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi)
+    {
+        base.OnDpiChanged(oldDpi, newDpi);
+        AllocateBitmap();
+    }
+
+    private void AllocateBitmap()
+    {
+        if (SkiaHost.ActualWidth <= 0 || SkiaHost.ActualHeight <= 0) return;
+
+        var dpi = VisualTreeHelper.GetDpi(this);
+        _dpiX = dpi.DpiScaleX > 0 ? dpi.DpiScaleX : 1.0;
+        _dpiY = dpi.DpiScaleY > 0 ? dpi.DpiScaleY : 1.0;
+
+        int w = Math.Max(1, (int)Math.Round(SkiaHost.ActualWidth  * _dpiX));
+        int h = Math.Max(1, (int)Math.Round(SkiaHost.ActualHeight * _dpiY));
+
+        _wbm = new WriteableBitmap(w, h, 96 * _dpiX, 96 * _dpiY, PixelFormats.Pbgra32, null);
         SkiaImage.Source = _wbm;
 
         if (_vm?.IsLoaded == true)
@@ -87,14 +118,15 @@ public partial class DxfTabControl : UserControl
         if (_vm.Scene.Is3D) { FitToWindow3D(); return; }
 
         var bounds = _vm.Scene.Bounds;
-        var vw = (float)_wbm.PixelWidth;
-        var vh = (float)_wbm.PixelHeight;
+        var vw = (float)(_wbm.PixelWidth  / _dpiX);
+        var vh = (float)(_wbm.PixelHeight / _dpiY);
         if (vw <= 0 || vh <= 0 || bounds.Width < 1e-4f || bounds.Height < 1e-4f) return;
 
         _fitZoom    = Math.Min(vw / bounds.Width, vh / bounds.Height) * 0.95f;
         _fitOffsetX = (vw - bounds.Width  * _fitZoom) / 2f - bounds.Left * _fitZoom;
         _fitOffsetY = (vh - bounds.Height * _fitZoom) / 2f - bounds.Top  * _fitZoom;
         _zoom = 1f;
+        _zoomTarget = 1f;
         _panX = _panY = 0f;
         Render();
     }
@@ -102,8 +134,8 @@ public partial class DxfTabControl : UserControl
     private void FitToWindow3D()
     {
         var scene = _vm!.Scene!;
-        var vw = (float)_wbm!.PixelWidth;
-        var vh = (float)_wbm.PixelHeight;
+        var vw = (float)(_wbm!.PixelWidth  / _dpiX);
+        var vh = (float)(_wbm.PixelHeight / _dpiY);
         if (vw <= 0 || vh <= 0) return;
 
         var min = scene.Bounds3DMin;
@@ -116,6 +148,7 @@ public partial class DxfTabControl : UserControl
         _camElevation = MathF.PI / 6f;
         _camPanX = _camPanY = 0f;
         _camZoom = Math.Min(vw, vh) / (radius * 2.4f); // 2.4 leaves a margin around the fit sphere
+        _camZoomTarget = _camZoom;
         Render();
     }
 
@@ -131,7 +164,8 @@ public partial class DxfTabControl : UserControl
                 SKColorType.Bgra8888, SKAlphaType.Premul);
             using var surface = SKSurface.Create(info, wbm.BackBuffer, wbm.BackBufferStride);
             var canvas = surface.Canvas;
-            canvas.Clear(new SKColor(18, 18, 30));
+            canvas.Clear(Theme.CanvasBackground);
+            canvas.Scale((float)_dpiX, (float)_dpiY);   // everything below works in DIPs
 
             if (_vm?.Scene != null && _vm.IsLoaded)
             {
@@ -145,7 +179,8 @@ public partial class DxfTabControl : UserControl
 
                 if (_vm.Scene.Is3D)
                 {
-                    DrawScene3D(canvas, _vm.Scene, visibleLayers, wbm.PixelWidth, wbm.PixelHeight);
+                    DrawScene3D(canvas, _vm.Scene, visibleLayers,
+                        (int)(wbm.PixelWidth / _dpiX), (int)(wbm.PixelHeight / _dpiY));
                 }
                 else
                 {
@@ -154,7 +189,7 @@ public partial class DxfTabControl : UserControl
                     canvas.Scale(_zoom);
                     canvas.Translate(_fitOffsetX, _fitOffsetY);
                     canvas.Scale(_fitZoom);          // apply fit scale so DXF units map to screen pixels
-                    DrawScene(canvas, _vm.Scene, visibleLayers);
+                    canvas.DrawPicture(GetScenePicture(_vm.Scene, visibleLayers));
                     canvas.Restore();
                 }
             }
@@ -178,6 +213,69 @@ public partial class DxfTabControl : UserControl
         cache[dash] = fx;
         return fx;
     }
+    // Cache key is the visible-layer set plus the scene's identity: a layer toggle or a
+    // page/file switch invalidates, a pan or zoom does not.
+    private SKPicture GetScenePicture(DxfScene scene, HashSet<string>? vis)
+    {
+        string key = scene.GetHashCode().ToString() + "|" +
+                     (vis == null ? "*" : string.Join(",", vis.OrderBy(x => x, StringComparer.OrdinalIgnoreCase)));
+        if (_picture != null && _pictureKey == key) return _picture;
+
+        _picture?.Dispose();
+        var b = scene.Bounds;
+        using var recorder = new SKPictureRecorder();
+        var cull = new SKRect(b.Left - b.Width, b.Top - b.Height, b.Right + b.Width, b.Bottom + b.Height);
+        DrawScene(recorder.BeginRecording(cull), scene, vis);
+        _picture = recorder.EndRecording();
+        _pictureKey = key;
+        return _picture;
+    }
+
+    // Renders the current page at a fixed size independent of the window, so an export is
+    // a usable reference image rather than a screenshot of whatever the window happened
+    // to be. Reuses the same scene picture the on-screen view draws.
+    public void ExportPng(string path, int width = 2400, int height = 1800)
+    {
+        var scene = _vm?.Scene;
+        if (scene == null) return;
+
+        var info = new SKImageInfo(width, height, SKColorType.Rgba8888, SKAlphaType.Premul);
+        using var surface = SKSurface.Create(info);
+        var canvas = surface.Canvas;
+        canvas.Clear(Theme.CanvasBackground);
+
+        HashSet<string>? vis = null;
+        if (_vm!.Layers.Count > 0)
+            vis = _vm.Layers.Where(l => l.IsVisible).Select(l => l.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        if (scene.Is3D)
+        {
+            DrawScene3D(canvas, scene, vis, width, height);
+        }
+        else
+        {
+            var b = scene.Bounds;
+            if (b.Width < 1e-4f || b.Height < 1e-4f) return;
+            float fit = Math.Min(width / b.Width, height / b.Height) * 0.95f;
+            canvas.Translate((width - b.Width * fit) / 2f - b.Left * fit,
+                             (height - b.Height * fit) / 2f - b.Top * fit);
+            canvas.Scale(fit);
+            canvas.DrawPicture(GetScenePicture(scene, vis));
+        }
+
+        using var image = surface.Snapshot();
+        using var data = image.Encode(SKEncodedImageFormat.Png, 100);
+        using var fs = new System.IO.FileStream(path, System.IO.FileMode.Create, System.IO.FileAccess.Write);
+        data.SaveTo(fs);
+    }
+
+    private void InvalidateScenePicture()
+    {
+        _picture?.Dispose();
+        _picture = null;
+        _pictureKey = null;
+    }
+
     private static void DrawScene(SKCanvas canvas, DxfScene scene, HashSet<string>? vis)
     {
         using var paint = new SKPaint
@@ -196,7 +294,7 @@ public partial class DxfTabControl : UserControl
         foreach (var c in scene.Circles)
         {
             if (vis != null && !vis.Contains(c.Layer)) continue;
-            paint.Color = c.Color;
+            paint.Color = Theme.ForBackground(c.Color);
             paint.PathEffect = DashEffect(c.Dash, dashCache);
             canvas.DrawCircle(c.Cx, -c.Cy, c.R, paint);
         }
@@ -204,7 +302,7 @@ public partial class DxfTabControl : UserControl
         foreach (var a in scene.Arcs)
         {
             if (vis != null && !vis.Contains(a.Layer)) continue;
-            paint.Color = a.Color;
+            paint.Color = Theme.ForBackground(a.Color);
             paint.PathEffect = DashEffect(a.Dash, dashCache);
             var oval = new SKRect(a.Cx - a.R, -a.Cy - a.R, a.Cx + a.R, -a.Cy + a.R);
             float span = a.EndDeg > a.StartDeg
@@ -216,7 +314,7 @@ public partial class DxfTabControl : UserControl
         foreach (var l in scene.Lines)
         {
             if (vis != null && !vis.Contains(l.Layer)) continue;
-            paint.Color = l.Color;
+            paint.Color = Theme.ForBackground(l.Color);
             paint.PathEffect = DashEffect(l.Dash, dashCache);
             canvas.DrawLine(l.X1, -l.Y1, l.X2, -l.Y2, paint);
         }
@@ -225,7 +323,7 @@ public partial class DxfTabControl : UserControl
         {
             if (p.Points.Count < 2) continue;
             if (vis != null && !vis.Contains(p.Layer)) continue;
-            paint.Color = p.Color;
+            paint.Color = Theme.ForBackground(p.Color);
             paint.PathEffect = DashEffect(p.Dash, dashCache);
             if (p.CurvePath != null) { canvas.DrawPath(p.CurvePath, paint); continue; }
             using var path = new SKPath();
@@ -295,7 +393,7 @@ public partial class DxfTabControl : UserControl
             }
         }
         float depthRange = maxDepth - minDepth;
-        var bg = new SKColor(18, 18, 30);
+        var bg = Theme.CanvasBackground;
 
         foreach (var w in visibleWires)
         {
@@ -349,7 +447,7 @@ public partial class DxfTabControl : UserControl
             placed.Add(placement);
             float ax = placement.X, ay = placement.Y;
 
-            textPaint.Color    = t.Color;
+            textPaint.Color    = Theme.ForBackground(t.Color);
             textPaint.TextSize = sz;
 
             var (dx, dy) = CadGeometry.AlignOffset(
@@ -369,7 +467,7 @@ public partial class DxfTabControl : UserControl
     private void LayerToggle_Click(object sender, RoutedEventArgs e)
     {
         _layerPanelExpanded = !_layerPanelExpanded;
-        LayerPanelCol.Width   = new GridLength(_layerPanelExpanded ? 200 : 20);
+        LayerPanelCol.Width   = new GridLength(_layerPanelExpanded ? 220 : 20);
         LayerPanelBody.Visibility = _layerPanelExpanded ? Visibility.Visible : Visibility.Collapsed;
         LayerToggleBtn.Content    = _layerPanelExpanded ? "◄" : "►";
     }
@@ -391,11 +489,13 @@ public partial class DxfTabControl : UserControl
             _panning = true;
         }
         _lastMouse = e.GetPosition(SkiaHost);
+        SkiaHost.Cursor = _orbiting ? Cursors.SizeAll : Cursors.ScrollAll;
         SkiaHost.CaptureMouse();
     }
 
     private void Canvas_MouseMove(object sender, MouseEventArgs e)
     {
+        UpdateReadouts(e.GetPosition(SkiaHost));
         if (!_panning && !_orbiting) return;
         var cur = e.GetPosition(SkiaHost);
         float dx = (float)(cur.X - _lastMouse.X);
@@ -421,33 +521,97 @@ public partial class DxfTabControl : UserControl
         Render();
     }
 
+    // Maps a screen point back through the pan/zoom/fit chain to drawing coordinates.
+    // Y is negated on the way out because the scene stores DXF (Y-up) coordinates.
+    private bool TryScenePoint(Point screen, out float x, out float y)
+    {
+        x = y = 0f;
+        if (_vm?.Scene == null || _vm.Scene.Is3D || _fitZoom == 0f || _zoom == 0f) return false;
+        float sx = ((float)screen.X - _panX) / _zoom;
+        float sy = ((float)screen.Y - _panY) / _zoom;
+        x = sx / _fitZoom - _fitOffsetX;
+        y = -(sy / _fitZoom - _fitOffsetY);
+        return true;
+    }
+
+    private void UpdateReadouts(Point screen)
+    {
+        if (_vm == null) return;
+        if (_vm.Scene?.Is3D == true)
+        {
+            _vm.CursorReadout = "";
+            _vm.ZoomReadout = $"orbit {_camAzimuth * 180f / MathF.PI:F0}° / {_camElevation * 180f / MathF.PI:F0}°";
+            return;
+        }
+        if (TryScenePoint(screen, out float x, out float y))
+            _vm.CursorReadout = $"X {x:F3}   Y {y:F3}";
+        _vm.ZoomReadout = $"{_zoom * _fitZoom * 100f:F0}%";
+    }
+
     private void Canvas_MouseUp(object sender, MouseButtonEventArgs e)
     {
         _panning = false;
         _orbiting = false;
+        SkiaHost.Cursor = Cursors.Arrow;
         SkiaHost.ReleaseMouseCapture();
     }
 
     private void Canvas_MouseWheel(object sender, MouseWheelEventArgs e)
     {
         float factor = e.Delta > 0 ? 1.12f : 1f / 1.12f;
+        e.Handled = true;
 
         if (_vm?.Scene?.Is3D == true)
         {
-            _camZoom *= factor;
-            Render();
-            e.Handled = true;
+            if (_camZoomTarget <= 0f) _camZoomTarget = _camZoom;
+            _camZoomTarget *= factor;
+            StartZoomEase(0f, 0f);
             return;
         }
 
         var p = e.GetPosition(SkiaHost);
-        float cx = (float)p.X, cy = (float)p.Y;
+        if (_zoomTarget <= 0f) _zoomTarget = _zoom;
+        _zoomTarget *= factor;
+        StartZoomEase((float)p.X, (float)p.Y);
+    }
 
+    // Steps the current zoom a fraction of the way to its target each tick, keeping the
+    // point under the cursor fixed, and stops once it is close enough to matter.
+    private void StartZoomEase(float anchorX, float anchorY)
+    {
+        _zoomTimer ??= new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(16),
+        };
+        _zoomTimer.Tick -= ZoomTick;
+        void ZoomTick(object? s, EventArgs e)
+        {
+            bool is3d = _vm?.Scene?.Is3D == true;
+            float cur = is3d ? _camZoom : _zoom;
+            float target = is3d ? _camZoomTarget : _zoomTarget;
+
+            if (MathF.Abs(target - cur) <= MathF.Max(1e-4f, cur * 0.005f))
+            {
+                if (is3d) _camZoom = target; else ApplyZoom(target, anchorX, anchorY);
+                _zoomTimer!.Stop();
+                Render();
+                return;
+            }
+
+            float next = cur + (target - cur) * 0.35f;
+            if (is3d) _camZoom = next; else ApplyZoom(next, anchorX, anchorY);
+            UpdateReadouts(new Point(anchorX, anchorY));
+            Render();
+        }
+        _zoomTimer.Tick += ZoomTick;
+        _zoomTimer.Start();
+    }
+
+    private void ApplyZoom(float newZoom, float cx, float cy)
+    {
+        float factor = _zoom == 0f ? 1f : newZoom / _zoom;
         _panX = cx + (_panX - cx) * factor;
         _panY = cy + (_panY - cy) * factor;
-        _zoom *= factor;
-
-        Render();
-        e.Handled = true;
+        _zoom = newZoom;
     }
 }

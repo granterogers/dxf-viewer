@@ -4,7 +4,7 @@
         xmlns:local="clr-namespace:DxfViewer"
         Title="{x:Static local:AppVersion.Full}"
         Width="1200" Height="800"
-        Background="#1E1E1E"
+        Background="{StaticResource WindowBg}"
         AllowDrop="True"
         Topmost="{Binding AlwaysOnTop}">
 
@@ -17,16 +17,16 @@
 
   <DockPanel>
     <!-- Toolbar -->
-    <Border DockPanel.Dock="Top" Background="#252535" BorderBrush="#444" BorderThickness="0,0,0,1">
+    <Border DockPanel.Dock="Top" Background="{StaticResource ToolbarBg}" BorderBrush="{StaticResource StrokeSubtle}" BorderThickness="0,0,0,1">
       <!-- Orange accent line at very top (INNERGY brand) -->
       <DockPanel>
-        <Border DockPanel.Dock="Top" Height="3" Background="#E07820"/>
+        <Border DockPanel.Dock="Top" Height="3" Background="{StaticResource AccentOrange}"/>
         <DockPanel Margin="6,4">
 
           <!-- Right: INNERGY branding -->
           <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,4,0">
             <TextBlock Text="INNERGY"
-                       Foreground="#E07820"
+                       Foreground="{StaticResource AccentOrange}"
                        FontFamily="Segoe UI"
                        FontSize="11"
                        FontWeight="Bold"
@@ -38,46 +38,56 @@
           <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
             <!-- Navigation buttons first -->
             <Button Style="{StaticResource ToolbarButton}"
-                    Content="&#9664; Previous Drawing"
+                    Content="&#9664;"
                     Command="{Binding NavPrevCommand}"
                     ToolTip="Previous drawing (&#8592;)"/>
             <Button Style="{StaticResource ToolbarButton}"
-                    Content="Next Drawing &#9654;"
+                    Content="&#9654;"
                     Command="{Binding NavNextCommand}"
                     ToolTip="Next drawing (&#8594;)"/>
 
             <!-- File / view actions -->
             <Button Style="{StaticResource ToolbarButton}"
-                    Content="Open File"
-                    Command="{Binding OpenFileCommand}"/>
+                    Content="&#128194;"
+                    Command="{Binding OpenFileCommand}" ToolTip="Open a drawing (Ctrl+O)"/>
             <Button Style="{StaticResource ToolbarButton}"
-                    Content="Fit Drawing to Page"
+                    Content="&#9974;"
                     Command="{Binding FitCommand}"
                     ToolTip="Fit the drawing to the window (F)"/>
             <ToggleButton Style="{StaticResource ToolbarToggleButton}"
-                          Content="Always on Top"
+                          Content="&#128204;"
                           Command="{Binding ToggleAlwaysOnTopCommand}"
                           IsChecked="{Binding AlwaysOnTop, Mode=OneWay}"
                           ToolTip="Keep this window above all others"/>
 
+            <Button Style="{StaticResource ToolbarButton}"
+                    Content="&#128190;"
+                    Command="{Binding ExportPngCommand}"
+                    ToolTip="Export the current drawing as a PNG image"/>
+            <ToggleButton Style="{StaticResource ToolbarToggleButton}"
+                          Content="&#9728;"
+                          Command="{Binding ToggleLightBackgroundCommand}"
+                          IsChecked="{Binding LightBackground, Mode=OneWay}"
+                          ToolTip="Light background (for print / Microvellum comparison)"/>
+
             <!-- Divider -->
-            <Border Width="1" Background="#2A4A70" Margin="6,3"/>
+            <Border Width="1" Background="{StaticResource StrokeSubtle}" Margin="6,3"/>
 
             <!-- Open with Microvellum -->
             <Button Style="{StaticResource ToolbarButton}"
                     Content="Open with Microvellum"
                     Command="{Binding OpenWithMicrovellumCommand}"
-                    Background="#0D47A1"
-                    BorderBrush="#082F6B"
+                    Background="{StaticResource AccentBlueDim}"
+                    BorderBrush="{StaticResource AccentBlueDim}"
                     Margin="2,0,0,0"
-                    ToolTip="Open the current DXF in Microvellum"/>
+                    ToolTip="Open the current drawing in Microvellum"/>
 
             <!-- Divider -->
-            <Border Width="1" Background="#2A4A70" Margin="6,3"/>
+            <Border Width="1" Background="{StaticResource StrokeSubtle}" Margin="6,3"/>
 
             <!-- Version -->
             <TextBlock Text="{x:Static local:AppVersion.Label}"
-                       Foreground="#6A6A78"
+                       Foreground="{StaticResource TextFaint}"
                        FontFamily="Segoe UI"
                        FontSize="11"
                        VerticalAlignment="Center"

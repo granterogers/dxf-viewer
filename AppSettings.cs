@@ -11,6 +11,7 @@ internal static class AppSettings
 
     private static string? _lastOpenedDirectory;
     private static string? _microvellumExePath;
+    private static bool _lightBackground;
 
     public static string? LastOpenedDirectory
     {
@@ -24,6 +25,12 @@ internal static class AppSettings
         set { _microvellumExePath = value; Save(); }
     }
 
+    public static bool LightBackground
+    {
+        get => _lightBackground;
+        set { _lightBackground = value; Save(); }
+    }
+
     static AppSettings()
     {
         try
@@ -35,6 +42,8 @@ internal static class AppSettings
                     _lastOpenedDirectory = v;
                 if (dict?.TryGetValue("MicrovellumExePath", out var mv) == true)
                     _microvellumExePath = mv;
+                if (dict?.TryGetValue("LightBackground", out var lb) == true && bool.TryParse(lb, out var lbv))
+                    _lightBackground = lbv;
             }
         }
         catch { }
@@ -48,6 +57,7 @@ internal static class AppSettings
             var dict = new Dictionary<string, string?>();
             if (_lastOpenedDirectory != null) dict["LastOpenedDirectory"] = _lastOpenedDirectory;
             if (_microvellumExePath != null) dict["MicrovellumExePath"] = _microvellumExePath;
+            dict["LightBackground"] = _lightBackground.ToString();
             File.WriteAllText(_file, JsonSerializer.Serialize(dict));
         }
         catch { }

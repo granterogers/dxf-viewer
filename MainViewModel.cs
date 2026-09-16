@@ -38,6 +38,22 @@ public class MainViewModel : INotifyPropertyChanged
     public ICommand NavPrevCommand { get; }
     public ICommand NavNextCommand { get; }
     public ICommand OpenWithMicrovellumCommand { get; }
+    public ICommand ToggleLightBackgroundCommand { get; }
+    public ICommand ExportPngCommand { get; }
+
+    private bool _lightBackground = AppSettings.LightBackground;
+    public bool LightBackground
+    {
+        get => _lightBackground;
+        set
+        {
+            _lightBackground = value;
+            Theme.LightBackground = value;
+            AppSettings.LightBackground = value;
+            OnPropertyChanged();
+            ActiveTab?.RenderAction?.Invoke();
+        }
+    }
 
     public MainViewModel()
     {
@@ -50,6 +66,9 @@ public class MainViewModel : INotifyPropertyChanged
         NavPrevCommand = new RelayCommand(_ => ActiveTab?.NavigatePrev(), _ => ActiveTab != null);
         NavNextCommand = new RelayCommand(_ => ActiveTab?.NavigateNext(), _ => ActiveTab != null);
         OpenWithMicrovellumCommand = new RelayCommand(_ => OpenWithMicrovellum(), _ => ActiveTab?.IsLoaded == true);
+        ToggleLightBackgroundCommand = new RelayCommand(_ => LightBackground = !LightBackground);
+        ExportPngCommand = new RelayCommand(_ => ExportPng(), _ => ActiveTab?.IsLoaded == true);
+        Theme.LightBackground = _lightBackground;
     }
 
     private void OpenFile()
@@ -100,6 +119,35 @@ public class MainViewModel : INotifyPropertyChanged
         {
             MessageBox.Show($"Failed to launch Microvellum:\n{ex.Message}",
                 "Launch Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    // Renders the active page to a PNG at a fixed high resolution, independent of the
+    // on-screen window size, so an exported image is usable as a reference rather than a
+    // screenshot of whatever the window happened to be.
+    public Action<string>? ExportRequested { get; set; }
+
+    private void ExportPng()
+    {
+        var tab = ActiveTab;
+        if (tab?.Scene == null) return;
+
+        var dlg = new Microsoft.Win32.SaveFileDialog
+        {
+            Filter = "PNG Image (*.png)|*.png",
+            FileName = Path.GetFileNameWithoutExtension(tab.FilePath) + ".png",
+            InitialDirectory = AppSettings.LastOpenedDirectory ?? "",
+        };
+        if (dlg.ShowDialog() != true) return;
+
+        try
+        {
+            ExportRequested?.Invoke(dlg.FileName);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show("Failed to export image:" + Environment.NewLine + ex.Message,
+                "Export Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 

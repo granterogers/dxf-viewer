@@ -1,4 +1,4 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
@@ -54,6 +54,7 @@ public class DxfTabViewModel : INotifyPropertyChanged
             OnPropertyChanged();
             OnPropertyChanged(nameof(Scene));
             OnPropertyChanged(nameof(IsScene3D));
+            OnPropertyChanged(nameof(SceneReadout));
             RefreshLayersFromScene();
             FitAction?.Invoke();
             RenderAction?.Invoke();
@@ -67,6 +68,22 @@ public class DxfTabViewModel : INotifyPropertyChanged
     public System.Collections.ObjectModel.ObservableCollection<LayerInfo> Layers { get; } = new();
     public Action? RenderAction { get; set; }
 
+    private string _cursorReadout = "";
+    public string CursorReadout
+    {
+        get => _cursorReadout;
+        set { _cursorReadout = value; OnPropertyChanged(); }
+    }
+
+    private string _zoomReadout = "";
+    public string ZoomReadout
+    {
+        get => _zoomReadout;
+        set { _zoomReadout = value; OnPropertyChanged(); }
+    }
+
+    public string SceneReadout => Scene == null ? "" : Scene.DiagnosticsSummary;
+
     private List<string> _dirFiles = new();
     private int _dirIndex = -1;
     public bool CanNavPrev => _dirFiles.Count > 1;
@@ -79,6 +96,7 @@ public class DxfTabViewModel : INotifyPropertyChanged
     public ICommand NavNextCommand { get; }
     public ICommand AllLayersOnCommand  { get; }
     public ICommand AllLayersOffCommand { get; }
+    public ICommand SoloLayerCommand    { get; }
 
     public DxfTabViewModel(string filePath, Action<DxfTabViewModel> closeCallback)
     {
@@ -88,6 +106,7 @@ public class DxfTabViewModel : INotifyPropertyChanged
         NavNextCommand = new RelayCommand(_ => NavigateNext(), _ => CanNavNext);
         AllLayersOnCommand  = new RelayCommand(_ => { foreach (var l in Layers) l.IsVisible = true; });
         AllLayersOffCommand = new RelayCommand(_ => { foreach (var l in Layers) l.IsVisible = false; });
+        SoloLayerCommand    = new RelayCommand(p => { if (p is LayerInfo li) SoloLayer(li); });
         RefreshDirList();
     }
 
@@ -131,6 +150,7 @@ public class DxfTabViewModel : INotifyPropertyChanged
             OnPropertyChanged(nameof(Scene));
             OnPropertyChanged(nameof(IsScene3D));
             RefreshLayersFromScene();
+            OnPropertyChanged(nameof(SceneReadout));
             State = TabState.Loaded;
             FitAction?.Invoke();
         }
@@ -145,12 +165,30 @@ public class DxfTabViewModel : INotifyPropertyChanged
     {
         Layers.Clear();
         if (Scene == null) return;
+
+        var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        void Bump(string l) => counts[l] = counts.TryGetValue(l, out var n) ? n + 1 : 1;
+        foreach (var c in Scene.Circles)   Bump(c.Layer);
+        foreach (var a in Scene.Arcs)      Bump(a.Layer);
+        foreach (var l in Scene.Lines)     Bump(l.Layer);
+        foreach (var pl in Scene.Polylines) Bump(pl.Layer);
+        foreach (var t in Scene.Texts)     Bump(t.Layer);
+        foreach (var w in Scene.Wires3D)   Bump(w.Layer);
+
         foreach (var (name, color) in Scene.Layers)
         {
-            var info = new LayerInfo(name, color);
+            var info = new LayerInfo(name, color, counts.TryGetValue(name, out var n) ? n : 0);
             info.PropertyChanged += (_, _) => RenderAction?.Invoke();
             Layers.Add(info);
         }
+    }
+
+    // Show only this layer -- the "solo"/isolate action every CAD layer manager has.
+    // Clicking solo on the only visible layer restores all of them, so it round-trips.
+    public void SoloLayer(LayerInfo target)
+    {
+        bool alreadySolo = Layers.All(l => l.IsVisible == ReferenceEquals(l, target));
+        foreach (var l in Layers) l.IsVisible = alreadySolo || ReferenceEquals(l, target);
     }
 
     public void FitToWindow() => FitAction?.Invoke();
