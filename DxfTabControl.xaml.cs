@@ -57,6 +57,12 @@ public partial class DxfTabControl : UserControl
     // Null when the pointer is outside the canvas, so the crosshair disappears with it.
     private Point? _cursorDip;
 
+    // Cursor position snapped to nearby geometry, in scene coordinates. Held separately
+    // from _cursorDip so the rubber band, the live distance and the value a click would
+    // commit are all the same point -- a readout that disagreed with the click would be
+    // worse than no readout.
+    private SKPoint? _cursorSnapped;
+
     public DxfTabControl()
     {
         InitializeComponent();
@@ -89,6 +95,8 @@ public partial class DxfTabControl : UserControl
                 SkiaHost.Cursor = Cursors.Arrow;
                 _measureA = _measureB = null;
                 _cursorDip = null;
+                _cursorSnapped = null;
+                if (_vm != null) _vm.SelectionReadout = "";
             }
             Dispatcher.Invoke(Render);
             return;
@@ -319,7 +327,8 @@ public partial class DxfTabControl : UserControl
         {
             float len = MathF.Sqrt((l.X2 - l.X1) * (l.X2 - l.X1) + (l.Y2 - l.Y1) * (l.Y2 - l.Y1));
             Consider(DistanceToSegment(sx, sy, l.X1, l.Y1, l.X2, l.Y2),
-                $"LINE   layer {l.Layer}   ({l.X1:F3}, {l.Y1:F3}) to ({l.X2:F3}, {l.Y2:F3})   length {len:F3}",
+                $"LINE   layer {l.Layer}   ({l.X1:F3}, {l.Y1:F3}) to ({l.X2:F3}, {l.Y2:F3})   " +
+                $"length {UnitConvert.Format(len, _vm?.SceneUnits ?? CadUnits.Unknown, _vm?.UnitSystem ?? UnitSystem.AsDrawn)}",
                 new SKRect(MathF.Min(l.X1, l.X2), -MathF.Max(l.Y1, l.Y2),
                            MathF.Max(l.X1, l.X2), -MathF.Min(l.Y1, l.Y2)));
         }
@@ -427,6 +436,29 @@ public partial class DxfTabControl : UserControl
         }
     }
 
+    private string FormatMeasurement(SKPoint a, SKPoint b)
+    {
+        float dx = b.X - a.X, dy = b.Y - a.Y;
+        var src = _vm?.SceneUnits ?? CadUnits.Unknown;
+        var tgt = _vm?.UnitSystem ?? UnitSystem.AsDrawn;
+        string unit = UnitConvert.TargetAbbreviation(src, tgt);
+        return $"distance {UnitConvert.Format(MathF.Sqrt(dx * dx + dy * dy), src, tgt)}" +
+               $"    dX {UnitConvert.FormatDelta(dx, src, tgt)} {unit}" +
+               $"    dY {UnitConvert.FormatDelta(dy, src, tgt)} {unit}";
+    }
+
+    // Live distance while the second point is still being chosen. Once both points are
+    // committed the measurement is frozen, so moving the cursor afterwards does not
+    // silently rewrite a reading the user is looking at.
+    private void UpdateMeasureReadout()
+    {
+        if (_vm == null) return;
+        if (_measureA is not { } a) { _vm.SelectionReadout = "measure: pick the first point"; return; }
+        if (_measureB is { } fixedB) { _vm.SelectionReadout = FormatMeasurement(a, fixedB); return; }
+        if (_cursorSnapped is { } live) { _vm.SelectionReadout = FormatMeasurement(a, live); return; }
+        _vm.SelectionReadout = "measure: pick the second point";
+    }
+
     // A left press that never became a drag is a pick, not a pan.
     private void HandleClick(Point p)
     {
@@ -439,16 +471,13 @@ public partial class DxfTabControl : UserControl
             if (_measureA == null || _measureB != null)
             {
                 _measureA = snapped; _measureB = null;
-                _vm.SelectionReadout = "measure: pick the second point";
             }
             else
             {
                 _measureB = snapped;
-                float dx = _measureB.Value.X - _measureA.Value.X;
-                float dy = _measureB.Value.Y - _measureA.Value.Y;
-                _vm.SelectionReadout =
-                    $"distance {MathF.Sqrt(dx * dx + dy * dy):F4}    dX {dx:F4}    dY {dy:F4}";
             }
+            _cursorSnapped = snapped;
+            UpdateMeasureReadout();
             Render();
             return;
         }
@@ -485,7 +514,13 @@ public partial class DxfTabControl : UserControl
         // measurement is visible while it is being made rather than only after.
         if (_measureA is { } a && _measureB == null && _cursorDip is { } c)
         {
+            // Anchor the band to the SNAPPED point, not the raw cursor, so the line ends
+            // where the measurement actually ends.
             var sa = ToScreen(a.X, a.Y);
+            var sb = _cursorSnapped is { } snap
+                ? ToScreen(snap.X, snap.Y)
+                : new SKPoint((float)c.X, (float)c.Y);
+
             using var band = new SKPaint
             {
                 IsAntialias = true,
@@ -494,8 +529,16 @@ public partial class DxfTabControl : UserControl
                 Color = new SKColor(0xF9, 0x54, 0x11),
                 PathEffect = SKPathEffect.CreateDash(new[] { 6f, 4f }, 0f),
             };
-            canvas.DrawLine(sa, new SKPoint((float)c.X, (float)c.Y), band);
+            canvas.DrawLine(sa, sb, band);
             band.PathEffect?.Dispose();
+
+            if (_cursorSnapped is { } live)
+                DrawMeasureLabel(canvas, sa, sb, FormatDistanceOnly(a, live), vw, vh);
+        }
+        else if (_measureA is { } fa && _measureB is { } fb)
+        {
+            DrawMeasureLabel(canvas, ToScreen(fa.X, fa.Y), ToScreen(fb.X, fb.Y),
+                FormatDistanceOnly(fa, fb), vw, vh);
         }
 
         if (_cursorDip is { } p)
@@ -513,6 +556,46 @@ public partial class DxfTabControl : UserControl
             };
             canvas.DrawCircle(x, y, 7f, hub);
         }
+    }
+
+    private string FormatDistanceOnly(SKPoint a, SKPoint b)
+    {
+        float dx = b.X - a.X, dy = b.Y - a.Y;
+        return UnitConvert.Format(MathF.Sqrt(dx * dx + dy * dy),
+            _vm?.SceneUnits ?? CadUnits.Unknown, _vm?.UnitSystem ?? UnitSystem.AsDrawn);
+    }
+
+    // Distance drawn on the canvas at the midpoint of the band, on an opaque pill so it
+    // stays readable over dense geometry. Nudged back inside the viewport when the
+    // midpoint is near an edge.
+    private static void DrawMeasureLabel(SKCanvas canvas, SKPoint a, SKPoint b, string text, float vw, float vh)
+    {
+        using var textPaint = new SKPaint
+        {
+            IsAntialias = true,
+            TextSize = 12.5f,
+            Typeface = TextTypeface,
+            Color = SKColors.White,
+        };
+
+        float tw = textPaint.MeasureText(text);
+        const float padX = 7f, padY = 4f, th = 12.5f;
+
+        float cx = (a.X + b.X) / 2f;
+        float cy = (a.Y + b.Y) / 2f - 14f;
+
+        float left = Math.Clamp(cx - tw / 2f - padX, 2f, MathF.Max(2f, vw - tw - 2 * padX - 2f));
+        float top  = Math.Clamp(cy - th - padY,      2f, MathF.Max(2f, vh - th - 2 * padY - 2f));
+        var pill = new SKRect(left, top, left + tw + 2 * padX, top + th + 2 * padY);
+
+        using var bg = new SKPaint
+        {
+            IsAntialias = true,
+            Style = SKPaintStyle.Fill,
+            Color = new SKColor(0xF9, 0x54, 0x11, 0xF0),
+        };
+        canvas.DrawRoundRect(pill, 4f, 4f, bg);
+        canvas.DrawText(text, pill.Left + padX, pill.Bottom - padY - 1.5f, textPaint);
     }
 
     private void InvalidateScenePicture()
@@ -743,6 +826,7 @@ public partial class DxfTabControl : UserControl
     private void Canvas_MouseLeave(object sender, MouseEventArgs e)
     {
         _cursorDip = null;
+        _cursorSnapped = null;
         if (_vm?.MeasureMode == true) Render();
     }
 
@@ -755,6 +839,12 @@ public partial class DxfTabControl : UserControl
         {
             _cursorDip = here;
             SkiaHost.Cursor = Cursors.None;   // the drawn crosshair replaces the pointer
+
+            _cursorSnapped = TryScenePoint(here, out float mx, out float my)
+                ? SnapPoint(mx, my)
+                : null;
+            UpdateMeasureReadout();
+
             if (!_panning && !_orbiting) { Render(); return; }
         }
 

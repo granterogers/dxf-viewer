@@ -94,7 +94,7 @@ public static class Program
             var b = scene.Bounds;
             Console.WriteLine($"OK: {Path.GetFileName(dxfPath)} page='{page.Name}' -> {outputPath}  " +
                 $"[C:{circles} A:{arcs} L:{lines} P:{polylines} T:{texts} W3D:{wires3d}]  " +
-                $"bounds=[{b.Left:F1},{b.Top:F1},{b.Right:F1},{b.Bottom:F1}]" +
+                $"bounds=[{b.Left:F1},{b.Top:F1},{b.Right:F1},{b.Bottom:F1}]  units={scene.Units}" +
                 (scene.Is3D ? $"  az={azimuthDeg}deg el={elevationDeg}deg" : "") +
                 $"  pages=[{string.Join(",", pages.Select(p => p.Name))}]");
             return 0;

@@ -200,6 +200,7 @@
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="Auto"/>
           <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="Auto"/>
           <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
         <TextBlock Grid.Column="0" Text="{Binding CursorReadout}"
@@ -208,13 +209,20 @@
         <TextBlock Grid.Column="1" Text="{Binding ZoomReadout}"
                    Style="{StaticResource LabelText}" MinWidth="90"
                    FontFamily="Consolas"/>
-        <TextBlock Grid.Column="2" Text="{Binding SceneReadout}"
+        <ComboBox Grid.Column="2"
+                  ItemsSource="{x:Static local:DxfTabViewModel.UnitChoices}"
+                  SelectedIndex="{Binding UnitChoiceIndex, Mode=TwoWay}"
+                  Width="120" Height="20" Margin="8,0,12,0"
+                  FontSize="{StaticResource FontLabel}" FontFamily="Segoe UI"
+                  VerticalAlignment="Center"
+                  ToolTip="Units for measurements. Conversion needs the drawing to declare its units ($INSUNITS); files that don't are shown as raw drawing units."/>
+        <TextBlock Grid.Column="3" Text="{Binding SceneReadout}"
                    Style="{StaticResource LabelText}"
                    HorizontalAlignment="Right"
                    TextTrimming="CharacterEllipsis"
                    ToolTip="{Binding SceneReadout}"
                    Visibility="{Binding HasSelectionReadout, Converter={StaticResource InverseBoolToVisibility}}"/>
-        <TextBlock Grid.Column="2" Text="{Binding SelectionReadout}"
+        <TextBlock Grid.Column="3" Text="{Binding SelectionReadout}"
                    Style="{StaticResource LabelText}"
                    Foreground="{StaticResource AccentOrange}"
                    HorizontalAlignment="Right"

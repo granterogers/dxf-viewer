@@ -93,6 +93,26 @@ public class DxfTabViewModel : INotifyPropertyChanged
     }
     public bool HasSelectionReadout => !string.IsNullOrEmpty(_selectionReadout);
 
+    public static readonly string[] UnitChoices = { "Drawing units", "Imperial", "Metric" };
+
+    private int _unitChoiceIndex = (int)AppSettings.UnitSystem;
+    public int UnitChoiceIndex
+    {
+        get => _unitChoiceIndex;
+        set
+        {
+            if (_unitChoiceIndex == value) return;
+            _unitChoiceIndex = value;
+            AppSettings.UnitSystem = (UnitSystem)value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(UnitSystem));
+            RenderAction?.Invoke();
+        }
+    }
+
+    public UnitSystem UnitSystem => (UnitSystem)_unitChoiceIndex;
+    public CadUnits SceneUnits => Scene?.Units ?? CadUnits.Unknown;
+
     private bool _measureMode;
     public bool MeasureMode
     {

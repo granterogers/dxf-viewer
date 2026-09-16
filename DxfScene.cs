@@ -34,6 +34,10 @@ public class DxfScene
     // entity renders as nothing and the user cannot tell "this file has none" from "we
     // don't draw those" -- a dangerous ambiguity in a tool used to verify exports.
     public string ParserUsed = "";
+
+    // What one drawing unit means, from the file's $INSUNITS header. Frequently Unknown:
+    // most of this project's corpus is headerless pre-R12 DXF that declares nothing.
+    public CadUnits Units = CadUnits.Unknown;
     public readonly SortedSet<string> UnsupportedEntities = new(StringComparer.OrdinalIgnoreCase);
     public string? ParseWarning;
 
@@ -46,6 +50,9 @@ public class DxfScene
             var parts = new List<string> { $"parser: {(string.IsNullOrEmpty(ParserUsed) ? "unknown" : ParserUsed)}" };
             parts.Add($"{EntityCount} entities");
             parts.Add($"{Layers.Count} layers");
+            parts.Add("units: " + (Units == CadUnits.Unknown
+                ? $"not declared (assuming {UnitConvert.Abbreviation(UnitConvert.AssumedWhenUndeclared)})"
+                : UnitConvert.Abbreviation(Units)));
             if (UnsupportedEntities.Count > 0)
                 parts.Add("skipped: " + string.Join(", ", UnsupportedEntities));
             if (!string.IsNullOrEmpty(ParseWarning)) parts.Add("note: " + ParseWarning);

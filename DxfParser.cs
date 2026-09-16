@@ -50,6 +50,7 @@ public static class DxfParser
 
     private static void ParseDocument(DxfScene scene, DxfDocument doc)
     {
+        try { scene.Units = UnitConvert.FromInsUnits((int)doc.DrawingVariables.InsUnits); } catch { }
         try { _ltScale = doc.DrawingVariables.LtScale; } catch { _ltScale = 1.0; }
         if (_ltScale <= 1e-9) _ltScale = 1.0;
 
