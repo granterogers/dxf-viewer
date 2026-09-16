@@ -1,12 +1,47 @@
 # HANDOFF.md
 
-Snapshot of where this repo stands as of **2026-09-14**, written so a fresh Claude session (or a
+Snapshot of where this repo stands as of **2026-09-16**, written so a fresh Claude session (or a
 human) can pick up with zero prior context. See [CLAUDE.md](CLAUDE.md) for standing project rules
 and the verification workflow — read that first, this file is the "what happened and what's left."
 
 If you're a Claude session reading this: the conversation that produced this handoff is long and
 detailed; this file is the distilled result, not a substitute for it, but it should be enough on
 its own.
+
+
+## 2026-09-16: 30-issue improvement pass (v1.6 -> v1.8)
+
+Issues #7-#36 were filed from a code review and all but one implemented across four commits.
+Things worth knowing that aren't obvious from the diffs:
+
+- **The sample corpus barely exercises the modern DXF parser.** Only **1 of 313** sample DXFs
+  has a `$ACADVER` header; everything else falls through to `ParseLegacy`, and DWGs use
+  `DwgParser`. So `ParseDocument` and `AddEntityFromBlock` were almost entirely unverified.
+  That is why `--make-fixture` exists: it authors `samples/DXF/fixtures/modern-entities.dxf`
+  covering nested blocks, block-local text, justified text, wrapped MText, POINT, DIMENSION,
+  HATCH, bulge arcs in both directions, and four linetypes. **If you touch the netDxf path,
+  the corpus will not catch your regression — the fixture is what will.**
+- **The two render paths had already drifted.** The app cleared its canvas to `#12121E` while
+  `--render-test` cleared to `#1A1A1A`, so the harness was verifying against a different
+  background than users ever saw. Both now read `Theme.CanvasBackground`. This is exactly the
+  failure mode CLAUDE.md warns about, and it had already happened.
+- **`--verify` replaces the manual sweep.** `DxfViewer.exe --verify` compares entity counts,
+  bounds and page lists for all 332 samples against `samples/baseline.json` and exits non-zero
+  on drift; `--verify --update` re-blesses after an intended change. Use this instead of the
+  bash sweep in CLAUDE.md, which is now the slow fallback for when you also want to eyeball
+  images.
+- **ACI colors changed 3 sample DWGs on purpose.** The old palette collapsed most indices to
+  one gray; the real 256-entry table now comes from netDxf. A full image-level diff confirmed
+  only those 3 files moved.
+- **Branding stops at the chrome.** `#333345` / `#F95411` from the Winter 2025 manual apply to
+  the toolbar and shell only. Drawing colors (blue borders, green routes, red dimension text)
+  are Microvellum conventions and are the correctness bar — do not "brand" them.
+- **One issue deliberately not done: #25** (DXF Paper Space). Implementing it means changing
+  the DXF parser, which CLAUDE.md and this file both rule out. Left open for a human decision.
+- **Still unverified by a human** (unchanged from before, and now with more surface area):
+  the interactive multi-page DWG dropdown, 3D orbit feel, and the Microvellum launch button.
+  New interactive surfaces that also need eyes: entity picking, the measure tool, layer solo,
+  PNG export, light-background mode, and the high-DPI canvas on a scaled display.
 
 ## What this app does
 
