@@ -76,6 +76,7 @@
             MouseMove="Canvas_MouseMove"
             MouseUp="Canvas_MouseUp"
             MouseWheel="Canvas_MouseWheel"
+            MouseLeave="Canvas_MouseLeave"
             Focusable="True">
         <Image x:Name="SkiaImage" Stretch="Fill"/>
         <TextBlock Text="3D — drag to rotate · middle-drag to pan · wheel to zoom"

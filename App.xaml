@@ -93,7 +93,8 @@
         <Setter Property="Template">
           <Setter.Value>
             <ControlTemplate TargetType="Button">
-              <Border x:Name="B" Background="{TemplateBinding Background}"
+              <Border x:Name="B" CornerRadius="4"
+                      Background="{TemplateBinding Background}"
                       BorderBrush="{TemplateBinding BorderBrush}"
                       BorderThickness="{TemplateBinding BorderThickness}"
                       Padding="{TemplateBinding Padding}">
@@ -109,74 +110,142 @@
         </Setter>
       </Style>
 
-      <!-- Shared blue button template — no hover/press color changes -->
-      <ControlTemplate x:Key="BlueButtonTemplate" TargetType="Button">
+      <!-- ===== Buttons =====
+           Rounded, softly gradient-filled chrome. The gradients are deliberately shallow
+           (a few percent of lightness): a strong gradient on a small control reads as
+           dated, a shallow one just stops it looking flat. -->
+      <LinearGradientBrush x:Key="ChromeFill" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Color="#464660" Offset="0"/>
+        <GradientStop Color="#3A3A4E" Offset="1"/>
+      </LinearGradientBrush>
+      <LinearGradientBrush x:Key="ChromeFillHover" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Color="#555572" Offset="0"/>
+        <GradientStop Color="#46465E" Offset="1"/>
+      </LinearGradientBrush>
+      <LinearGradientBrush x:Key="ChromeFillPressed" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Color="#323244" Offset="0"/>
+        <GradientStop Color="#3B3B50" Offset="1"/>
+      </LinearGradientBrush>
+      <LinearGradientBrush x:Key="BrandFill" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Color="#F96A2A" Offset="0"/>
+        <GradientStop Color="#E8430F" Offset="1"/>
+      </LinearGradientBrush>
+      <LinearGradientBrush x:Key="BrandFillHover" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Color="#FF7C3D" Offset="0"/>
+        <GradientStop Color="#F4501A" Offset="1"/>
+      </LinearGradientBrush>
+
+      <ControlTemplate x:Key="RoundButtonTemplate" TargetType="Button">
         <Border x:Name="Chrome"
+                CornerRadius="6"
                 Background="{TemplateBinding Background}"
                 BorderBrush="{TemplateBinding BorderBrush}"
                 BorderThickness="{TemplateBinding BorderThickness}"
-                Padding="{TemplateBinding Padding}">
+                Padding="{TemplateBinding Padding}"
+                SnapsToDevicePixels="True">
           <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
         </Border>
         <ControlTemplate.Triggers>
           <Trigger Property="IsMouseOver" Value="True">
-            <Setter TargetName="Chrome" Property="Background" Value="{StaticResource ChromeButtonEdge}"/>
+            <Setter TargetName="Chrome" Property="Background" Value="{StaticResource ChromeFillHover}"/>
+            <Setter TargetName="Chrome" Property="BorderBrush" Value="#6A6A8C"/>
+          </Trigger>
+          <Trigger Property="IsPressed" Value="True">
+            <Setter TargetName="Chrome" Property="Background" Value="{StaticResource ChromeFillPressed}"/>
           </Trigger>
           <Trigger Property="IsEnabled" Value="False">
-            <Setter TargetName="Chrome" Property="Opacity" Value="0.4"/>
+            <Setter TargetName="Chrome" Property="Opacity" Value="0.35"/>
           </Trigger>
         </ControlTemplate.Triggers>
       </ControlTemplate>
 
-      <!-- Standard toolbar button (blue, static color) -->
       <Style x:Key="ToolbarButton" TargetType="Button">
-        <Setter Property="Padding" Value="8,4"/>
-        <Setter Property="Margin" Value="0,0,8,0"/>
-        <Setter Property="Background" Value="{StaticResource ChromeButton}"/>
-        <Setter Property="Foreground" Value="White"/>
-        <Setter Property="BorderBrush" Value="{StaticResource ChromeButtonEdge}"/>
+        <Setter Property="Padding" Value="11,5"/>
+        <Setter Property="Margin" Value="0,0,6,0"/>
+        <Setter Property="Height" Value="28"/>
+        <Setter Property="Background" Value="{StaticResource ChromeFill}"/>
+        <Setter Property="Foreground" Value="#EDEDF5"/>
+        <Setter Property="BorderBrush" Value="#53536E"/>
         <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="FontFamily" Value="Segoe UI"/>
+        <Setter Property="FontSize" Value="12"/>
         <Setter Property="Cursor" Value="Hand"/>
-        <Setter Property="Template" Value="{StaticResource BlueButtonTemplate}"/>
+        <Setter Property="Template" Value="{StaticResource RoundButtonTemplate}"/>
       </Style>
 
-      <!-- Toolbar toggle button (blue, static color) -->
-      <Style x:Key="ToolbarToggleButton" TargetType="ToggleButton">
-        <Setter Property="Padding" Value="8,4"/>
-        <Setter Property="Margin" Value="0,0,8,0"/>
-        <Setter Property="Background" Value="{StaticResource ChromeButton}"/>
+      <!-- Primary action: carries the brand gradient so it reads as the emphasised one -->
+      <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource ToolbarButton}">
+        <Setter Property="Background" Value="{StaticResource BrandFill}"/>
+        <Setter Property="BorderBrush" Value="#C43D0A"/>
         <Setter Property="Foreground" Value="White"/>
-        <Setter Property="BorderBrush" Value="{StaticResource ChromeButtonEdge}"/>
-        <Setter Property="BorderThickness" Value="1"/>
-        <Setter Property="Cursor" Value="Hand"/>
         <Setter Property="Template">
           <Setter.Value>
-            <ControlTemplate TargetType="ToggleButton">
-              <Border x:Name="Chrome"
+            <ControlTemplate TargetType="Button">
+              <Border x:Name="Chrome" CornerRadius="6"
                       Background="{TemplateBinding Background}"
                       BorderBrush="{TemplateBinding BorderBrush}"
                       BorderThickness="{TemplateBinding BorderThickness}"
-                      Padding="{TemplateBinding Padding}">
+                      Padding="{TemplateBinding Padding}"
+                      SnapsToDevicePixels="True">
                 <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
               </Border>
               <ControlTemplate.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">
-                  <Setter TargetName="Chrome" Property="Background" Value="{StaticResource ChromeButtonEdge}"/>
+                  <Setter TargetName="Chrome" Property="Background" Value="{StaticResource BrandFillHover}"/>
                 </Trigger>
-                <!-- Checked state has to repaint the template's own Border: the style's
-                     Background setter is what TemplateBinding reads, so a plain Setter on
-                     the ToggleButton is overridden by the hover trigger above. -->
+                <Trigger Property="IsEnabled" Value="False">
+                  <Setter TargetName="Chrome" Property="Opacity" Value="0.35"/>
+                </Trigger>
+              </ControlTemplate.Triggers>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+
+      <Style x:Key="ToolbarToggleButton" TargetType="ToggleButton">
+        <Setter Property="Padding" Value="11,5"/>
+        <Setter Property="Margin" Value="0,0,6,0"/>
+        <Setter Property="Height" Value="28"/>
+        <Setter Property="Background" Value="{StaticResource ChromeFill}"/>
+        <Setter Property="Foreground" Value="#EDEDF5"/>
+        <Setter Property="BorderBrush" Value="#53536E"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="FontFamily" Value="Segoe UI"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="ToggleButton">
+              <Border x:Name="Chrome" CornerRadius="6"
+                      Background="{TemplateBinding Background}"
+                      BorderBrush="{TemplateBinding BorderBrush}"
+                      BorderThickness="{TemplateBinding BorderThickness}"
+                      Padding="{TemplateBinding Padding}"
+                      SnapsToDevicePixels="True">
+                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              </Border>
+              <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                  <Setter TargetName="Chrome" Property="Background" Value="{StaticResource ChromeFillHover}"/>
+                  <Setter TargetName="Chrome" Property="BorderBrush" Value="#6A6A8C"/>
+                </Trigger>
+                <!-- Checked state has to repaint the template Border directly: a plain
+                     Setter on the ToggleButton loses to the hover trigger above. -->
                 <Trigger Property="IsChecked" Value="True">
-                  <Setter TargetName="Chrome" Property="Background"  Value="{StaticResource AccentOrange}"/>
-                  <Setter TargetName="Chrome" Property="BorderBrush" Value="{StaticResource AccentOrangeDim}"/>
+                  <Setter TargetName="Chrome" Property="Background"  Value="{StaticResource BrandFill}"/>
+                  <Setter TargetName="Chrome" Property="BorderBrush" Value="#C43D0A"/>
+                  <Setter Property="Foreground" Value="White"/>
                 </Trigger>
                 <MultiTrigger>
                   <MultiTrigger.Conditions>
                     <Condition Property="IsChecked"   Value="True"/>
                     <Condition Property="IsMouseOver" Value="True"/>
                   </MultiTrigger.Conditions>
-                  <Setter TargetName="Chrome" Property="Background" Value="#FF6A2A"/>
+                  <Setter TargetName="Chrome" Property="Background" Value="{StaticResource BrandFillHover}"/>
                 </MultiTrigger>
+                <Trigger Property="IsEnabled" Value="False">
+                  <Setter TargetName="Chrome" Property="Opacity" Value="0.35"/>
+                </Trigger>
               </ControlTemplate.Triggers>
             </ControlTemplate>
           </Setter.Value>
@@ -247,20 +316,29 @@
         <Setter Property="Template">
           <Setter.Value>
             <ControlTemplate TargetType="TabItem">
-              <Border x:Name="TabBorder"
-                      Background="#252540"
-                      BorderThickness="0"
-                      Padding="12,0,8,0"
-                      Height="34">
-                <ContentPresenter ContentSource="Header"
-                                  VerticalAlignment="Center"
-                                  HorizontalAlignment="Left"/>
-              </Border>
+              <Grid>
+                <Border x:Name="TabBorder"
+                        Background="#2C2C3E"
+                        CornerRadius="6,6,0,0"
+                        Margin="2,4,1,0"
+                        BorderThickness="0"
+                        Padding="12,0,8,0"
+                        Height="30">
+                  <ContentPresenter ContentSource="Header"
+                                    VerticalAlignment="Center"
+                                    HorizontalAlignment="Left"/>
+                </Border>
+                <Border x:Name="TabAccent" Height="2" VerticalAlignment="Bottom"
+                        Margin="2,0,1,0" CornerRadius="1"
+                        Background="{StaticResource BrandGradient}"
+                        Visibility="Collapsed"/>
+              </Grid>
               <ControlTemplate.Triggers>
                 <Trigger Property="IsSelected" Value="True">
-                  <Setter TargetName="TabBorder" Property="Background" Value="#2D2D50"/>
-                  <Setter TargetName="TabBorder" Property="BorderThickness" Value="0,0,0,3"/>
-                  <Setter TargetName="TabBorder" Property="BorderBrush" Value="#4FA8E8"/>
+                  <Setter TargetName="TabBorder" Property="Background" Value="#3A3A52"/>
+                  <!-- Brand gradient bar instead of the old blue underline, which the
+                       identity manual rules out. -->
+                  <Setter TargetName="TabAccent" Property="Visibility" Value="Visible"/>
                 </Trigger>
                 <MultiTrigger>
                   <MultiTrigger.Conditions>

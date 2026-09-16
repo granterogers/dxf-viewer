@@ -53,6 +53,10 @@ public partial class DxfTabControl : UserControl
     private SKPoint? _measureA, _measureB;
     private Point _pressOrigin;
 
+    // Live cursor position in DIPs, used for the measure crosshair and rubber-band line.
+    // Null when the pointer is outside the canvas, so the crosshair disappears with it.
+    private Point? _cursorDip;
+
     public DxfTabControl()
     {
         InitializeComponent();
@@ -78,6 +82,17 @@ public partial class DxfTabControl : UserControl
 
     private void VmPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(DxfTabViewModel.MeasureMode))
+        {
+            if (_vm?.MeasureMode != true)
+            {
+                SkiaHost.Cursor = Cursors.Arrow;
+                _measureA = _measureB = null;
+                _cursorDip = null;
+            }
+            Dispatcher.Invoke(Render);
+            return;
+        }
         if (e.PropertyName != nameof(DxfTabViewModel.State)) return;
         InvalidateScenePicture();
         if (_vm?.IsLoaded == true)
@@ -198,6 +213,8 @@ public partial class DxfTabControl : UserControl
                     canvas.DrawPicture(GetScenePicture(_vm.Scene, visibleLayers));
                     DrawOverlay(canvas);
                     canvas.Restore();
+                    DrawMeasureCursor(canvas,
+                        (float)(wbm.PixelWidth / _dpiX), (float)(wbm.PixelHeight / _dpiY));
                 }
             }
         }
@@ -449,6 +466,55 @@ public partial class DxfTabControl : UserControl
         Render();
     }
 
+    // Drawn after the scene transform is popped, so the crosshair spans the whole viewport
+    // in screen space regardless of zoom -- the CAD convention, and far easier to aim with
+    // than a small pointer glyph.
+    private void DrawMeasureCursor(SKCanvas canvas, float vw, float vh)
+    {
+        if (_vm?.MeasureMode != true || _vm.Scene?.Is3D == true) return;
+
+        using var hair = new SKPaint
+        {
+            IsAntialias = false,
+            Style = SKPaintStyle.Stroke,
+            StrokeWidth = 0f,
+            Color = new SKColor(0xF9, 0x54, 0x11, 0xB0),
+        };
+
+        // Rubber band from the anchored first point to wherever the cursor is now, so the
+        // measurement is visible while it is being made rather than only after.
+        if (_measureA is { } a && _measureB == null && _cursorDip is { } c)
+        {
+            var sa = ToScreen(a.X, a.Y);
+            using var band = new SKPaint
+            {
+                IsAntialias = true,
+                Style = SKPaintStyle.Stroke,
+                StrokeWidth = 1.4f,
+                Color = new SKColor(0xF9, 0x54, 0x11),
+                PathEffect = SKPathEffect.CreateDash(new[] { 6f, 4f }, 0f),
+            };
+            canvas.DrawLine(sa, new SKPoint((float)c.X, (float)c.Y), band);
+            band.PathEffect?.Dispose();
+        }
+
+        if (_cursorDip is { } p)
+        {
+            float x = (float)p.X, y = (float)p.Y;
+            canvas.DrawLine(0, y, vw, y, hair);
+            canvas.DrawLine(x, 0, x, vh, hair);
+
+            using var hub = new SKPaint
+            {
+                IsAntialias = true,
+                Style = SKPaintStyle.Stroke,
+                StrokeWidth = 1.2f,
+                Color = new SKColor(0xF9, 0x54, 0x11),
+            };
+            canvas.DrawCircle(x, y, 7f, hub);
+        }
+    }
+
     private void InvalidateScenePicture()
     {
         _picture?.Dispose();
@@ -674,9 +740,24 @@ public partial class DxfTabControl : UserControl
         SkiaHost.CaptureMouse();
     }
 
+    private void Canvas_MouseLeave(object sender, MouseEventArgs e)
+    {
+        _cursorDip = null;
+        if (_vm?.MeasureMode == true) Render();
+    }
+
     private void Canvas_MouseMove(object sender, MouseEventArgs e)
     {
-        UpdateReadouts(e.GetPosition(SkiaHost));
+        var here = e.GetPosition(SkiaHost);
+        UpdateReadouts(here);
+
+        if (_vm?.MeasureMode == true && _vm.Scene?.Is3D != true)
+        {
+            _cursorDip = here;
+            SkiaHost.Cursor = Cursors.None;   // the drawn crosshair replaces the pointer
+            if (!_panning && !_orbiting) { Render(); return; }
+        }
+
         if (!_panning && !_orbiting) return;
         var cur = e.GetPosition(SkiaHost);
         float dx = (float)(cur.X - _lastMouse.X);
@@ -708,11 +789,23 @@ public partial class DxfTabControl : UserControl
     {
         x = y = 0f;
         if (_vm?.Scene == null || _vm.Scene.Is3D || _fitZoom == 0f || _zoom == 0f) return false;
+        // Must undo the canvas chain in reverse: Translate(pan) Scale(zoom)
+        // Translate(fitOffset) Scale(fitZoom). The offset is applied BEFORE the fit scale,
+        // so it has to be subtracted before dividing -- dividing first (as this did) put
+        // the readout and every pick off by fitOffset*(fitZoom-1).
         float sx = ((float)screen.X - _panX) / _zoom;
         float sy = ((float)screen.Y - _panY) / _zoom;
-        x = sx / _fitZoom - _fitOffsetX;
-        y = -(sy / _fitZoom - _fitOffsetY);
+        x = (sx - _fitOffsetX) / _fitZoom;
+        y = -((sy - _fitOffsetY) / _fitZoom);
         return true;
+    }
+
+    // Forward transform matching TryScenePoint, for drawing overlay bits in screen space.
+    private SKPoint ToScreen(float x, float y)
+    {
+        float lx = _fitOffsetX + _fitZoom * x;
+        float ly = _fitOffsetY + _fitZoom * -y;
+        return new SKPoint(_panX + _zoom * lx, _panY + _zoom * ly);
     }
 
     private void UpdateReadouts(Point screen)
@@ -734,7 +827,7 @@ public partial class DxfTabControl : UserControl
         bool wasPanning = _panning;
         _panning = false;
         _orbiting = false;
-        SkiaHost.Cursor = Cursors.Arrow;
+        SkiaHost.Cursor = _vm?.MeasureMode == true ? Cursors.None : Cursors.Arrow;
         SkiaHost.ReleaseMouseCapture();
 
         var p = e.GetPosition(SkiaHost);
