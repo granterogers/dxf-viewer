@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using netDxf;
 using netDxf.Entities;
 using netDxf.Tables;
@@ -44,6 +44,9 @@ public static class DxfParser
 
     private static void ParseDocument(DxfScene scene, DxfDocument doc)
     {
+        try { _ltScale = doc.DrawingVariables.LtScale; } catch { _ltScale = 1.0; }
+        if (_ltScale <= 1e-9) _ltScale = 1.0;
+
         foreach (var e in doc.Lines)       AddLine(scene, e, null);
         foreach (var e in doc.Arcs)        AddArc(scene, e, null);
         foreach (var e in doc.Circles)     AddCircle(scene, e, null);
@@ -136,12 +139,27 @@ public static class DxfParser
 
     private static string LayerOf(EntityObject e) => e.Layer?.Name ?? "";
 
+    // Header LTSCALE for the document currently being parsed. Parsing is single-threaded
+    // and one document at a time, so a static is enough and avoids threading a scale
+    // argument through every Add* method.
+    private static double _ltScale = 1.0;
+
+    // An entity's own linetype wins; "ByLayer" defers to the layer's. LinetypeScale is a
+    // per-entity multiplier on top of the drawing-wide LTSCALE.
+    private static float[]? DashOf(EntityObject e)
+    {
+        string? name = e.Linetype?.Name;
+        if (string.IsNullOrEmpty(name) || name.Equals("ByLayer", StringComparison.OrdinalIgnoreCase))
+            name = e.Layer?.Linetype?.Name;
+        return CadGeometry.LinetypeDash(name, _ltScale * (e.LinetypeScale > 1e-9 ? e.LinetypeScale : 1.0));
+    }
+
     private static void AddLine(DxfScene scene, Line e, Layer? bl, Matrix4? xf = null)
     {
         var s = xf.HasValue ? ApplyXform(e.StartPoint, xf.Value) : e.StartPoint;
         var p = xf.HasValue ? ApplyXform(e.EndPoint, xf.Value) : e.EndPoint;
         scene.Lines.Add(new SceneLine((float)s.X, (float)s.Y, (float)p.X, (float)p.Y,
-            ResolveColor(e, bl)) { Layer = LayerOf(e) });
+            ResolveColor(e, bl)) { Layer = LayerOf(e), Dash = DashOf(e) });
     }
 
     private static void AddCircle(DxfScene scene, Circle e, Layer? bl, Matrix4? xf = null)
@@ -149,7 +167,7 @@ public static class DxfParser
         var c = xf.HasValue ? ApplyXform(e.Center, xf.Value) : e.Center;
         float scale = xf.HasValue ? (float)Math.Sqrt(xf.Value.M11 * xf.Value.M11 + xf.Value.M21 * xf.Value.M21) : 1f;
         scene.Circles.Add(new SceneCircle((float)c.X, (float)c.Y, (float)e.Radius * scale,
-            ResolveColor(e, bl)) { Layer = LayerOf(e) });
+            ResolveColor(e, bl)) { Layer = LayerOf(e), Dash = DashOf(e) });
     }
 
     private static void AddArc(DxfScene scene, Arc e, Layer? bl, Matrix4? xf = null)
@@ -157,7 +175,7 @@ public static class DxfParser
         var c = xf.HasValue ? ApplyXform(e.Center, xf.Value) : e.Center;
         float scale = xf.HasValue ? (float)Math.Sqrt(xf.Value.M11 * xf.Value.M11 + xf.Value.M21 * xf.Value.M21) : 1f;
         scene.Arcs.Add(new SceneArc((float)c.X, (float)c.Y, (float)e.Radius * scale,
-            (float)e.StartAngle, (float)e.EndAngle, ResolveColor(e, bl)) { Layer = LayerOf(e) });
+            (float)e.StartAngle, (float)e.EndAngle, ResolveColor(e, bl)) { Layer = LayerOf(e), Dash = DashOf(e) });
     }
 
     private static void AddEllipse(DxfScene scene, Ellipse e, Layer? bl, Matrix4? xf = null)
@@ -176,6 +194,7 @@ public static class DxfParser
 
         var poly = new ScenePolyline { Closed = !isArc, Color = ResolveColor(e, bl) };
         poly.Layer = LayerOf(e);
+        poly.Dash = DashOf(e);
         for (int i = 0; i <= segs; i++)
         {
             double t = startRad + i * span / segs;
@@ -195,24 +214,54 @@ public static class DxfParser
 
         var poly = new ScenePolyline { Closed = e.IsClosed, Color = ResolveColor(e, bl) };
         poly.Layer = LayerOf(e);
+        poly.Dash = DashOf(e);
+
+        var path = new SKPath();
+        bool pathStarted = false, anyBulge = false;
+        void PathTo(Vector2 p2, bool line)
+        {
+            var v3 = xf.HasValue ? ApplyXform(new Vector3(p2.X, p2.Y, 0), xf.Value) : new Vector3(p2.X, p2.Y, 0);
+            var sp = new SKPoint((float)v3.X, (float)-v3.Y);   // path is built in screen space (Y negated)
+            if (!pathStarted) { path.MoveTo(sp); pathStarted = true; }
+            else if (line) path.LineTo(sp);
+        }
+
         for (int i = 0; i < verts.Count; i++)
         {
             int ni = (i + 1) % verts.Count;
             if (ni == 0 && !e.IsClosed) { AddVert(verts[i].Position); break; }
 
             AddVert(verts[i].Position);
+            PathTo(verts[i].Position, line: true);
 
-            if (Math.Abs(verts[i].Bulge) > 1e-9)
+            double bulge = verts[i].Bulge;
+            if (Math.Abs(bulge) > 1e-9)
             {
+                anyBulge = true;
                 foreach (var bp in CadGeometry.BulgePoints(
                     (verts[i].Position.X, verts[i].Position.Y),
                     (verts[ni].Position.X, verts[ni].Position.Y),
-                    verts[i].Bulge))
+                    bulge))
                     AddVertRaw(new Vector2(bp.X, bp.Y));
+
+                AppendBulgeArc(path, verts[i].Position, verts[ni].Position, bulge, xf);
             }
         }
-        if (!e.IsClosed && verts.Count > 0) AddVert(verts[^1].Position);
-        if (poly.Points.Count >= 2) scene.Polylines.Add(poly);
+        if (!e.IsClosed && verts.Count > 0)
+        {
+            AddVert(verts[^1].Position);
+            PathTo(verts[^1].Position, line: true);
+        }
+        if (poly.Points.Count < 2) { path.Dispose(); return; }
+
+        if (anyBulge)
+        {
+            if (e.IsClosed) path.Close();
+            poly.CurvePath = path;
+        }
+        else path.Dispose();
+
+        scene.Polylines.Add(poly);
 
         void AddVert(Vector2 p2)
         {
@@ -226,6 +275,31 @@ public static class DxfParser
         }
     }
 
+    // Appends the bulge arc from -> to as a real conic arc, so it stays smooth at any zoom
+    // instead of showing the segment facets frozen in at parse time. Mirrors the geometry
+    // in CadGeometry.BulgePoints, including its hard-won use of the radius *magnitude*.
+    private static void AppendBulgeArc(SKPath path, Vector2 from, Vector2 to, double bulge, Matrix4? xf)
+    {
+        double angle = 4.0 * Math.Atan(Math.Abs(bulge));
+        double totalAngle = bulge >= 0 ? angle : -angle;
+        double dx = to.X - from.X, dy = to.Y - from.Y;
+        double d = Math.Sqrt(dx * dx + dy * dy);
+        if (d < 1e-12 || Math.Abs(Math.Sin(totalAngle / 2)) < 1e-12) return;
+
+        double r = Math.Abs(d / (2 * Math.Sin(totalAngle / 2)));
+        var end3 = xf.HasValue ? ApplyXform(new Vector3(to.X, to.Y, 0), xf.Value) : new Vector3(to.X, to.Y, 0);
+        float scale = XformScale(xf);
+        float rr = (float)(r * scale);
+
+        // Y is negated for screen space, which mirrors the plane -- so the sweep direction
+        // flips relative to the DXF-space bulge sign.
+        var dir = bulge >= 0 ? SKPathDirection.CounterClockwise : SKPathDirection.Clockwise;
+        var size = angle > Math.PI ? SKPathArcSize.Large : SKPathArcSize.Small;
+
+        path.ArcTo(new SKPoint(rr, rr), 0f, size, dir,
+                   new SKPoint((float)end3.X, (float)-end3.Y));
+    }
+
     private static void AddPolyline(DxfScene scene, Polyline e, Layer? bl, Matrix4? xf = null)
     {
         var verts = e.Vertexes;
@@ -233,6 +307,7 @@ public static class DxfParser
 
         var poly = new ScenePolyline { Closed = e.IsClosed, Color = ResolveColor(e, bl) };
         poly.Layer = LayerOf(e);
+        poly.Dash = DashOf(e);
         foreach (var v in verts)
         {
             var pt = xf.HasValue ? ApplyXform(v.Position, xf.Value) : v.Position;
@@ -247,6 +322,7 @@ public static class DxfParser
         if (pts == null || pts.Count < 2) return;
         var poly = new ScenePolyline { Color = ResolveColor(e, bl) };
         poly.Layer = LayerOf(e);
+        poly.Dash = DashOf(e);
         foreach (var p in pts)
         {
             var q = xf.HasValue ? ApplyXform(new Vector3(p.X, p.Y, 0), xf.Value) : new Vector3(p.X, p.Y, 0);

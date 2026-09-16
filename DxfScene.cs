@@ -1,4 +1,4 @@
-﻿using System.Numerics;
+using System.Numerics;
 using SkiaSharp;
 
 namespace DxfViewer;
@@ -243,6 +243,8 @@ public class DxfScene
             {
                 if (run != null && run.Count >= 2)
                 {
+                    // CurvePath deliberately not carried over: it describes the whole
+                    // original polyline, not this surviving run.
                     var np = new ScenePolyline { Color = p.Color, Layer = p.Layer };
                     np.Points.AddRange(run);
                     replacement.Add(np);
@@ -335,14 +337,20 @@ public class DxfScene
 public readonly record struct SceneCircle(float Cx, float Cy, float R, SKColor Color)
 {
     public string Layer { get; init; } = "";
+    public float[]? Dash { get; init; } = null;
 }
 public readonly record struct SceneArc(float Cx, float Cy, float R, float StartDeg, float EndDeg, SKColor Color)
 {
     public string Layer { get; init; } = "";
+    public float[]? Dash { get; init; } = null;
 }
 public readonly record struct SceneLine(float X1, float Y1, float X2, float Y2, SKColor Color)
 {
     public string Layer { get; init; } = "";
+
+    // Dash/gap lengths in drawing units (CAD semantics: a dash pattern scales with the
+    // drawing, not the screen), or null for a continuous stroke.
+    public float[]? Dash { get; init; } = null;
 
     // A "ROUTEDIM"-styled DIMENSION entity measures a CNC toolpath/routing distance,
     // not a part edge -- its coordinates live in the machine's routing space, which
@@ -375,6 +383,14 @@ public class ScenePolyline
     public bool   Closed;
     public SKColor Color;
     public string  Layer = "";
+    public float[]? Dash;
+
+    // True-curve form of this polyline, when it contains bulge arcs. Points stays populated
+    // (flattened) because bounds, outlier rejection and splitting all reason over vertices;
+    // CurvePath only changes how it is *drawn*, so an arc stays smooth at any zoom instead
+    // of showing the facets baked in at parse time. Splitting a polyline at an outlier
+    // clears this -- the path no longer describes the surviving runs.
+    public SKPath? CurvePath;
 }
 
 // A single 3D wireframe edge (world space, Y-up), e.g. one edge of a DWG Solid3D body.

@@ -1,4 +1,4 @@
-﻿using SkiaSharp;
+using SkiaSharp;
 using System.Numerics;
 using System.Windows;
 using System.Windows.Controls;
@@ -166,6 +166,18 @@ public partial class DxfTabControl : UserControl
         }
     }
 
+
+    // Dash patterns are in drawing units, matching CAD semantics (a dashed line's dashes
+    // scale with the drawing, not the screen). The effect must be recreated per entity and
+    // disposed, so it is cached by pattern for the duration of one scene draw.
+    private static SKPathEffect? DashEffect(float[]? dash, Dictionary<float[], SKPathEffect> cache)
+    {
+        if (dash == null || dash.Length < 2) return null;
+        if (cache.TryGetValue(dash, out var fx)) return fx;
+        fx = SKPathEffect.CreateDash(dash, 0f);
+        cache[dash] = fx;
+        return fx;
+    }
     private static void DrawScene(SKCanvas canvas, DxfScene scene, HashSet<string>? vis)
     {
         using var paint = new SKPaint
@@ -179,11 +191,13 @@ public partial class DxfTabControl : UserControl
             // once the fit-to-window scale for a small part is applied.
             StrokeWidth = 0f,
         };
+        var dashCache = new Dictionary<float[], SKPathEffect>();
 
         foreach (var c in scene.Circles)
         {
             if (vis != null && !vis.Contains(c.Layer)) continue;
             paint.Color = c.Color;
+            paint.PathEffect = DashEffect(c.Dash, dashCache);
             canvas.DrawCircle(c.Cx, -c.Cy, c.R, paint);
         }
 
@@ -191,6 +205,7 @@ public partial class DxfTabControl : UserControl
         {
             if (vis != null && !vis.Contains(a.Layer)) continue;
             paint.Color = a.Color;
+            paint.PathEffect = DashEffect(a.Dash, dashCache);
             var oval = new SKRect(a.Cx - a.R, -a.Cy - a.R, a.Cx + a.R, -a.Cy + a.R);
             float span = a.EndDeg > a.StartDeg
                 ? a.EndDeg - a.StartDeg
@@ -202,6 +217,7 @@ public partial class DxfTabControl : UserControl
         {
             if (vis != null && !vis.Contains(l.Layer)) continue;
             paint.Color = l.Color;
+            paint.PathEffect = DashEffect(l.Dash, dashCache);
             canvas.DrawLine(l.X1, -l.Y1, l.X2, -l.Y2, paint);
         }
 
@@ -210,6 +226,8 @@ public partial class DxfTabControl : UserControl
             if (p.Points.Count < 2) continue;
             if (vis != null && !vis.Contains(p.Layer)) continue;
             paint.Color = p.Color;
+            paint.PathEffect = DashEffect(p.Dash, dashCache);
+            if (p.CurvePath != null) { canvas.DrawPath(p.CurvePath, paint); continue; }
             using var path = new SKPath();
             path.MoveTo(p.Points[0].X, -p.Points[0].Y);
             for (int i = 1; i < p.Points.Count; i++)
@@ -217,6 +235,9 @@ public partial class DxfTabControl : UserControl
             if (p.Closed) path.Close();
             canvas.DrawPath(path, paint);
         }
+
+        paint.PathEffect = null;
+        foreach (var fx in dashCache.Values) fx.Dispose();
 
         DrawTexts(canvas, scene, vis);
     }

@@ -54,6 +54,32 @@ internal static class TestFixture
             doc.AddEntity(new MText("WRAPPED MTEXT THAT SHOULD BREAK ACROSS SEVERAL LINES",
                 new Vector2(0, 140), 3.0, 30.0) { Layer = layer });
 
+            // Bulge arcs both ways: a positive bulge must arc counter-clockwise in DXF
+            // space and a negative one clockwise. Getting the sign wrong reflects the arc
+            // to the far side of its circle -- the old "bowtie" artifact -- so both signs
+            // and a >180-degree case are covered here deliberately.
+            doc.AddEntity(new LwPolyline(new[]
+            {
+                new LwPolylineVertex(150, 0)  { Bulge =  0.5 },
+                new LwPolylineVertex(180, 0)  { Bulge = -0.5 },
+                new LwPolylineVertex(210, 0)  { Bulge =  1.0 },
+                new LwPolylineVertex(240, 0)  { Bulge = -2.0 },
+                new LwPolylineVertex(270, 0),
+            }, false) { Layer = layer });
+
+            // One line per stock linetype, so a regression that silently drops dashes is
+            // visible as a block of identical solid lines.
+            var linetypes = new[]
+            {
+                Linetype.Dashed, Linetype.Center, Linetype.Dot, Linetype.DashDot,
+            };
+            for (int i = 0; i < linetypes.Length; i++)
+            {
+                doc.Linetypes.Add(linetypes[i]);
+                doc.AddEntity(new Line(new Vector2(150, 40 + i * 8), new Vector2(270, 40 + i * 8))
+                    { Layer = layer, Linetype = linetypes[i], LinetypeScale = 4.0 });
+            }
+
             doc.AddEntity(new Point(new Vector2(-10, -10)) { Layer = layer });
             doc.AddEntity(new Point(new Vector2(-20, -10)) { Layer = layer });
 

@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Linq;
 using System.Numerics;
 using SkiaSharp;
@@ -164,15 +164,29 @@ public static class Program
         }
     }
 
+
+    // Dash patterns are in drawing units, matching CAD semantics (a dashed line's dashes
+    // scale with the drawing, not the screen). The effect must be recreated per entity and
+    // disposed, so it is cached by pattern for the duration of one scene draw.
+    private static SKPathEffect? DashEffect(float[]? dash, Dictionary<float[], SKPathEffect> cache)
+    {
+        if (dash == null || dash.Length < 2) return null;
+        if (cache.TryGetValue(dash, out var fx)) return fx;
+        fx = SKPathEffect.CreateDash(dash, 0f);
+        cache[dash] = fx;
+        return fx;
+    }
     private static void DrawSceneForTest(SKCanvas canvas, DxfScene scene)
     {
         // Hairline (see DxfTabControl.DrawScene) so the test harness matches the real renderer.
         using var paint = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 0f };
+        var dashCache = new Dictionary<float[], SKPathEffect>();
 
         foreach (var c in scene.Circles)
         {
             if (!LayerInfo.DefaultVisible(c.Layer)) continue;
             paint.Color = c.Color;
+            paint.PathEffect = DashEffect(c.Dash, dashCache);
             canvas.DrawCircle(c.Cx, -c.Cy, c.R, paint);
         }
 
@@ -180,6 +194,7 @@ public static class Program
         {
             if (!LayerInfo.DefaultVisible(a.Layer)) continue;
             paint.Color = a.Color;
+            paint.PathEffect = DashEffect(a.Dash, dashCache);
             var oval = new SKRect(a.Cx - a.R, -a.Cy - a.R, a.Cx + a.R, -a.Cy + a.R);
             float span = a.EndDeg > a.StartDeg
                 ? a.EndDeg - a.StartDeg
@@ -191,6 +206,7 @@ public static class Program
         {
             if (!LayerInfo.DefaultVisible(l.Layer)) continue;
             paint.Color = l.Color;
+            paint.PathEffect = DashEffect(l.Dash, dashCache);
             canvas.DrawLine(l.X1, -l.Y1, l.X2, -l.Y2, paint);
         }
 
@@ -199,6 +215,8 @@ public static class Program
             if (p.Points.Count < 2) continue;
             if (!LayerInfo.DefaultVisible(p.Layer)) continue;
             paint.Color = p.Color;
+            paint.PathEffect = DashEffect(p.Dash, dashCache);
+            if (p.CurvePath != null) { canvas.DrawPath(p.CurvePath, paint); continue; }
             using var path = new SKPath();
             path.MoveTo(p.Points[0].X, -p.Points[0].Y);
             for (int i = 1; i < p.Points.Count; i++)
@@ -206,6 +224,9 @@ public static class Program
             if (p.Closed) path.Close();
             canvas.DrawPath(path, paint);
         }
+
+        paint.PathEffect = null;
+        foreach (var fx in dashCache.Values) fx.Dispose();
 
         if (scene.Texts.Count > 0)
         {

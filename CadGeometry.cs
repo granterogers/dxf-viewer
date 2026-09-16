@@ -126,31 +126,67 @@ internal static class CadGeometry
              _                 => 0f,
          });
 
-    public static SKColor AciIndexToSKColor(short idx) => idx switch
-    {
-        1  => new SKColor(255,   0,   0),
-        2  => new SKColor(255, 255,   0),
-        3  => new SKColor(  0, 255,   0),
-        4  => new SKColor(  0, 255, 255),
-        5  => new SKColor(  0,   0, 255),
-        6  => new SKColor(255,   0, 255),
-        7  => new SKColor(255, 255, 255),
-        8  => new SKColor(128, 128, 128),
-        9  => new SKColor(192, 192, 192),
-        _  => AciPaletteApprox(idx)
-    };
+    // The full 256-entry AutoCAD Color Index table, taken from netDxf's own implementation
+    // rather than transcribed by hand -- the previous approximation interpolated seven
+    // decades and collapsed everything else (30-39, 50-59, 70-79, 90-99, 110-119 and all
+    // of 130-255) to a single flat gray.
+    private static readonly SKColor[] AciTable = BuildAciTable();
 
-    private static SKColor AciPaletteApprox(short idx)
+    private static SKColor[] BuildAciTable()
     {
-        if (idx is >= 10 and <= 19) return new SKColor(255, (byte)(255 - (idx - 10) * 28), 0);
-        if (idx is >= 20 and <= 29) return new SKColor(255, (byte)((idx - 20) * 28), 0);
-        if (idx is >= 40 and <= 49) return new SKColor((byte)(255 - (idx - 40) * 28), 255, 0);
-        if (idx is >= 60 and <= 69) return new SKColor(0, 255, (byte)((idx - 60) * 28));
-        if (idx is >= 80 and <= 89) return new SKColor(0, (byte)(255 - (idx - 80) * 28), 255);
-        if (idx is >= 100 and <= 109) return new SKColor((byte)((idx - 100) * 28), 0, 255);
-        if (idx is >= 120 and <= 129) return new SKColor(255, 0, (byte)(255 - (idx - 120) * 28));
-        return new SKColor(200, 200, 200);
+        var table = new SKColor[256];
+        for (int i = 0; i < 256; i++)
+        {
+            try
+            {
+                var c = new netDxf.AciColor((short)i).ToColor();
+                table[i] = new SKColor(c.R, c.G, c.B);
+            }
+            catch
+            {
+                table[i] = new SKColor(255, 255, 255);
+            }
+        }
+        return table;
     }
+
+    // Standard AutoCAD linetype patterns, as dash/gap run lengths in drawing units. Named
+    // rather than read from the file's own LTYPE table because every real export uses the
+    // stock ACAD names, and the name is the one thing both parser paths can see. A dot is
+    // emitted as a very short dash -- Skia has no zero-length dash concept.
+    public static float[]? LinetypeDash(string? name, double scale = 1.0)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        var n = name.Trim().ToUpperInvariant();
+        if (n is "CONTINUOUS" or "BYLAYER" or "BYBLOCK" or "SOLID") return null;
+
+        // Trailing 2 / X suffixes are ACAD's half- and double-scale variants.
+        double mult = 1.0;
+        if (n.EndsWith("X2")) { mult = 2.0; n = n[..^2]; }
+        else if (n.EndsWith("2")) { mult = 0.5; n = n[..^1]; }
+
+        float[]? baseline = n switch
+        {
+            "DASHED"   or "DASH"     => new[] { 0.5f,  0.25f },
+            "HIDDEN"                 => new[] { 0.25f, 0.125f },
+            "CENTER"                 => new[] { 1.25f, 0.25f, 0.25f, 0.25f },
+            "PHANTOM"                => new[] { 1.25f, 0.25f, 0.25f, 0.25f, 0.25f, 0.25f },
+            "DOT"                    => new[] { 0.01f, 0.25f },
+            "DASHDOT"  or "DASHDOT2" => new[] { 0.5f,  0.25f, 0.01f, 0.25f },
+            "DIVIDE"                 => new[] { 0.5f,  0.25f, 0.01f, 0.25f, 0.01f, 0.25f },
+            "BORDER"                 => new[] { 0.5f,  0.25f, 0.5f,  0.25f, 0.01f, 0.25f },
+            _                        => null,
+        };
+        if (baseline == null) return null;
+
+        double s = mult * (scale > 1e-9 ? scale : 1.0);
+        var result = new float[baseline.Length];
+        for (int i = 0; i < baseline.Length; i++) result[i] = (float)(baseline[i] * s);
+        return result;
+    }
+
+    public static SKColor AciIndexToSKColor(short idx) =>
+        idx >= 0 && idx < 256 ? AciTable[idx] : new SKColor(255, 255, 255);
 
     public static string DecodeDxfText(string s)
     {
