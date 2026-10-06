@@ -38,6 +38,7 @@ public class MainViewModel : INotifyPropertyChanged
     public ICommand NavPrevCommand { get; }
     public ICommand NavNextCommand { get; }
     public ICommand OpenWithMicrovellumCommand { get; }
+    public ICommand ViewSourceCommand { get; }
     public ICommand ToggleLightBackgroundCommand { get; }
     public ICommand ExportPngCommand { get; }
     public ICommand ToggleMeasureCommand { get; }
@@ -73,6 +74,7 @@ public class MainViewModel : INotifyPropertyChanged
         NavPrevCommand = new RelayCommand(_ => ActiveTab?.NavigatePrev(), _ => ActiveTab != null);
         NavNextCommand = new RelayCommand(_ => ActiveTab?.NavigateNext(), _ => ActiveTab != null);
         OpenWithMicrovellumCommand = new RelayCommand(_ => OpenWithMicrovellum(), _ => ActiveTab?.IsLoaded == true);
+        ViewSourceCommand = new RelayCommand(_ => ViewSource(), _ => ActiveTab != null && File.Exists(ActiveTab.FilePath));
         ToggleLightBackgroundCommand = new RelayCommand(_ => LightBackground = !LightBackground);
         ExportPngCommand = new RelayCommand(_ => ExportPng(), _ => ActiveTab?.IsLoaded == true);
         ToggleMeasureCommand = new RelayCommand(_ => MeasureMode = !MeasureMode, _ => ActiveTab?.IsLoaded == true);
@@ -127,6 +129,40 @@ public class MainViewModel : INotifyPropertyChanged
         {
             MessageBox.Show($"Failed to launch Microvellum:\n{ex.Message}",
                 "Launch Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    // Opens the active file in Notepad so the raw group codes can be read against what the
+    // viewer drew -- the quickest way to settle "is the app wrong, or is the export wrong?".
+    private void ViewSource()
+    {
+        var path = ActiveTab?.FilePath;
+        if (string.IsNullOrEmpty(path) || !File.Exists(path)) return;
+
+        // DWG is a binary format: Notepad would show megabytes of mojibake. DXF is plain
+        // text and is the case this button is actually for, so confirm rather than silently
+        // doing something useless.
+        if (path.EndsWith(".dwg", StringComparison.OrdinalIgnoreCase))
+        {
+            var answer = MessageBox.Show(
+                "DWG is a binary format, so Notepad will show unreadable content." +
+                Environment.NewLine + Environment.NewLine + "Open it anyway?",
+                "View Source", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (answer != MessageBoxResult.Yes) return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo("notepad.exe")
+            {
+                Arguments = $"\"{path}\"",
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show("Failed to open the file in Notepad:" + Environment.NewLine + ex.Message,
+                "View Source", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
