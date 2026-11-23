@@ -32,8 +32,8 @@
                           IsChecked="{Binding AlwaysOnTop, Mode=OneWay}"
                           ToolTip="Keep this window above all others">
               <StackPanel Orientation="Horizontal">
-                <TextBlock Text="&#128204;" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                <TextBlock Text="Always on Top" VerticalAlignment="Center"/>
+                <TextBlock Text="&#128204;" Style="{StaticResource BtnIcon}"/>
+                <TextBlock Text="Always on Top" Style="{StaticResource BtnLabel}"/>
               </StackPanel>
             </ToggleButton>
             <Border Width="1" Background="#4A4A63" Margin="4,4,10,4"/>
@@ -52,16 +52,16 @@
                     Command="{Binding NavPrevCommand}"
                     ToolTip="Previous drawing in this folder">
               <StackPanel Orientation="Horizontal">
-                <TextBlock Text="&#9664;" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                <TextBlock Text="Previous" VerticalAlignment="Center"/>
+                <TextBlock Text="&#9664;" Style="{StaticResource BtnIcon}"/>
+                <TextBlock Text="Previous" Style="{StaticResource BtnLabel}"/>
               </StackPanel>
             </Button>
             <Button Style="{StaticResource ToolbarButton}"
                     Command="{Binding NavNextCommand}"
                     ToolTip="Next drawing in this folder">
               <StackPanel Orientation="Horizontal">
-                <TextBlock Text="Next" VerticalAlignment="Center"/>
-                <TextBlock Text="&#9654;" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                <TextBlock Text="Next" Style="{StaticResource BtnLabel}"/>
+                <TextBlock Text="&#9654;" VerticalAlignment="Center"/>
               </StackPanel>
             </Button>
 
@@ -71,24 +71,24 @@
                     Command="{Binding OpenFileCommand}"
                     ToolTip="Open a drawing (Ctrl+O)">
               <StackPanel Orientation="Horizontal">
-                <TextBlock Text="&#128194;" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                <TextBlock Text="Open File" VerticalAlignment="Center"/>
+                <TextBlock Text="&#128194;" Style="{StaticResource BtnIcon}"/>
+                <TextBlock Text="Open File" Style="{StaticResource BtnLabel}"/>
               </StackPanel>
             </Button>
             <Button Style="{StaticResource ToolbarButton}"
                     Command="{Binding FitCommand}"
                     ToolTip="Fit the drawing to the window (F)">
               <StackPanel Orientation="Horizontal">
-                <TextBlock Text="&#9974;" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                <TextBlock Text="Fit to Window" VerticalAlignment="Center"/>
+                <TextBlock Text="&#9974;" Style="{StaticResource BtnIcon}"/>
+                <TextBlock Text="Fit to Window" Style="{StaticResource BtnLabel}"/>
               </StackPanel>
             </Button>
             <Button Style="{StaticResource ToolbarButton}"
                     Command="{Binding ExportPngCommand}"
                     ToolTip="Export the current drawing as a PNG image">
               <StackPanel Orientation="Horizontal">
-                <TextBlock Text="&#128190;" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                <TextBlock Text="Export PNG" VerticalAlignment="Center"/>
+                <TextBlock Text="&#128190;" Style="{StaticResource BtnIcon}"/>
+                <TextBlock Text="Export PNG" Style="{StaticResource BtnLabel}"/>
               </StackPanel>
             </Button>
             <ToggleButton Style="{StaticResource ToolbarToggleButton}"
@@ -96,8 +96,8 @@
                           IsChecked="{Binding MeasureMode, Mode=OneWay}"
                           ToolTip="Measure distance between two points (snaps to endpoints and centres)">
               <StackPanel Orientation="Horizontal">
-                <TextBlock Text="&#128207;" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                <TextBlock Text="Measure" VerticalAlignment="Center"/>
+                <TextBlock Text="&#128207;" Style="{StaticResource BtnIcon}"/>
+                <TextBlock Text="Measure" Style="{StaticResource BtnLabel}"/>
               </StackPanel>
             </ToggleButton>
             <ToggleButton Style="{StaticResource ToolbarToggleButton}"
@@ -106,8 +106,8 @@
                           ToolTip="Switch between a dark and a light drawing background">
               <StackPanel Orientation="Horizontal">
                 <!-- Light bulb: the clearest single glyph for a light/dark switch. -->
-                <TextBlock Text="&#128161;" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                <TextBlock Text="Light Mode" VerticalAlignment="Center"/>
+                <TextBlock Text="&#128161;" Style="{StaticResource BtnIcon}"/>
+                <TextBlock Text="Light Mode" Style="{StaticResource BtnLabel}"/>
               </StackPanel>
             </ToggleButton>
 
@@ -117,8 +117,8 @@
                     Command="{Binding ViewSourceCommand}"
                     ToolTip="Open the raw file in Notepad to read its group codes">
               <StackPanel Orientation="Horizontal">
-                <TextBlock Text="&#128441;" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                <TextBlock Text="View Source" VerticalAlignment="Center"/>
+                <TextBlock Text="&#128441;" Style="{StaticResource BtnIcon}"/>
+                <TextBlock Text="View Source" Style="{StaticResource BtnLabel}"/>
               </StackPanel>
             </Button>
 
@@ -126,8 +126,8 @@
                     Command="{Binding OpenWithMicrovellumCommand}"
                     ToolTip="Open the current drawing in Microvellum">
               <StackPanel Orientation="Horizontal">
-                <TextBlock Text="&#8599;" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                <TextBlock Text="Open with Microvellum" VerticalAlignment="Center"/>
+                <TextBlock Text="&#8599;" Style="{StaticResource BtnIcon}"/>
+                <TextBlock Text="Open with Microvellum" Style="{StaticResource BtnLabel}"/>
               </StackPanel>
             </Button>
 

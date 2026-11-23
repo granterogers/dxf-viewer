@@ -65,11 +65,12 @@ public partial class App : Application
                        @"Software\Classes\.dxf\OpenWithProgids"))
                 owp.SetValue(progId, Array.Empty<byte>(), RegistryValueKind.Binary);
 
-            // Take ownership of .dxf only if it isn't already claimed by another app
-            using var extKey = Registry.CurrentUser.OpenSubKey(@"Software\Classes\.dxf", false);
-            var current = extKey?.GetValue("") as string ?? "";
-            if (string.IsNullOrEmpty(current) || current == progId)
-                SetValue(@"Software\Classes\.dxf", progId);
+            // Claim .dxf outright. This used to yield whenever another application had
+            // already claimed it, which meant a Microvellum/Toolbox reinstall silently took
+            // the extension back -- and with it the icon Explorer shows on every DXF.
+            // Windows' own default-app choice (UserChoice) still wins over this, so the
+            // user's explicit pick is never overridden.
+            SetValue(@"Software\Classes\.dxf", progId);
 
             // Tell the shell to refresh all file-type icons and the Open-With list
             SHChangeNotify(0x08000000 /* SHCNE_ASSOCCHANGED */,
@@ -107,6 +108,21 @@ public partial class App : Application
             RestoreMainWindow();
             (MainWindow?.DataContext as MainViewModel)?.OpenFileCommand.Execute(null);
         });
+        menu.Items.Add(new WinForms.ToolStripSeparator());
+
+        // The app has no settings dialog, so preferences live on the tray menu.
+        var iconsOnly = new WinForms.ToolStripMenuItem("Icon-only toolbar")
+        {
+            CheckOnClick = true,
+            Checked = AppSettings.IconsOnlyToolbar,
+        };
+        iconsOnly.CheckedChanged += (_, _) =>
+        {
+            if (MainWindow?.DataContext is MainViewModel vm) vm.IconsOnly = iconsOnly.Checked;
+            else AppSettings.IconsOnlyToolbar = iconsOnly.Checked;
+        };
+        menu.Items.Add(iconsOnly);
+
         menu.Items.Add(new WinForms.ToolStripSeparator());
         menu.Items.Add("Exit", null, (_, _) => Shutdown());
 

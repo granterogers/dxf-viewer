@@ -49,6 +49,15 @@ public class MainViewModel : INotifyPropertyChanged
         set { if (ActiveTab != null) { ActiveTab.MeasureMode = value; OnPropertyChanged(); } }
     }
 
+    // Icon-only toolbar: the labels are helpful while learning the app and just take up
+    // width once you know it, so this is a preference rather than a fixed choice.
+    private bool _iconsOnly = AppSettings.IconsOnlyToolbar;
+    public bool IconsOnly
+    {
+        get => _iconsOnly;
+        set { _iconsOnly = value; AppSettings.IconsOnlyToolbar = value; OnPropertyChanged(); }
+    }
+
     private bool _lightBackground = AppSettings.LightBackground;
     public bool LightBackground
     {

@@ -81,6 +81,26 @@
       </Style>
 
 
+      <!-- Toolbar button contents. The label hides and the icon's trailing gap closes
+           when icon-only mode is on, so the buttons shrink instead of leaving a hole. -->
+      <Style x:Key="BtnIcon" TargetType="TextBlock">
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="Margin" Value="0,0,6,0"/>
+        <Style.Triggers>
+          <DataTrigger Binding="{Binding DataContext.IconsOnly, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+            <Setter Property="Margin" Value="0"/>
+          </DataTrigger>
+        </Style.Triggers>
+      </Style>
+      <Style x:Key="BtnLabel" TargetType="TextBlock">
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Style.Triggers>
+          <DataTrigger Binding="{Binding DataContext.IconsOnly, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+            <Setter Property="Visibility" Value="Collapsed"/>
+          </DataTrigger>
+        </Style.Triggers>
+      </Style>
+
       <!-- Small button used inside side panels -->
       <Style x:Key="PanelButton" TargetType="Button">
         <Setter Property="Padding" Value="6,2"/>

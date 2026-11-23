@@ -1,0 +1,243 @@
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Microvellum DXF Viewer</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap">
+<style>
+  /* Layout: two sections — what it's for, what else it does. One 940px column, light
+     ground, small dense type, dark header strip. Fixed INNERGY identity, set explicitly. */
+  :root {
+    --dark:   #333345;
+    --orange: #F95411;
+    --grey:   #A3A2C1;
+    --muted:  #5E5D75;
+    --light:  #F2F1F7;
+    --white:  #FFFFFF;
+    --rule:   #E0DFEA;
+    --font: "Poppins", "Century Gothic", Futura, "Avenir Next", Avenir, Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, "Cascadia Mono", Consolas, "SF Mono", Menlo, monospace;
+    color-scheme: light;
+  }
+
+  body {
+    background: var(--white);
+    color: var(--dark);
+    font-family: var(--font);
+    font-size: 13.5px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .band--dark  { background: var(--dark); color: var(--white); }
+  .band--light { background: var(--light); }
+
+  .wrap {
+    max-width: 940px; margin-inline: auto;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 40px;
+  }
+  .wrap--head { padding-block: 24px; }
+
+  h1,h2,h3 { margin: 0; font-weight: 600; line-height: 1.25; text-wrap: balance; }
+  h1 { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.01em; }
+  h2 { font-size: 1.15rem; }
+  h3 { font-size: 0.875rem; font-weight: 600; }
+  p  { margin: 0; }
+
+  .eyebrow {
+    font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.13em;
+    text-transform: uppercase; color: var(--orange); margin: 0;
+  }
+  .sub { color: var(--muted); max-width: 72ch; }
+  .lead { font-size: 0.9375rem; color: var(--muted); max-width: 72ch; }
+
+  .stack { display: flex; flex-direction: column; gap: 14px; }
+  .stack--sm { gap: 7px; }
+
+  .head { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .head img { height: 30px; width: auto; }
+  .vtag {
+    font-family: var(--mono); font-size: 0.6875rem; font-weight: 600;
+    background: var(--orange); color: var(--white);
+    padding: 2px 8px; border-radius: 999px;
+  }
+
+  figure { margin: 0; display: flex; flex-direction: column; gap: 6px; }
+  figure img { width: 100%; height: auto; display: block; border: 1px solid var(--rule); border-radius: 6px; }
+  figcaption { font-size: 0.75rem; color: var(--muted); }
+  figcaption b { color: var(--dark); font-weight: 600; }
+
+  /* keyboard keys */
+  kbd {
+    font-family: var(--font); font-size: 0.75rem; font-weight: 600;
+    background: var(--white); color: var(--dark);
+    border: 1px solid var(--rule); border-bottom-width: 2px;
+    border-radius: 4px; padding: 1px 7px; white-space: nowrap;
+  }
+  .band--dark kbd { background: #42425A; color: var(--white); border-color: #53536E; }
+
+  /* how-it-works row */
+  .how { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; }
+  .howitem { display: flex; flex-direction: column; gap: 5px; }
+  .howitem p { font-size: 0.8125rem; color: var(--muted); }
+
+  /* callouts pinned onto the real screenshot; percentage coords scale with the image */
+  .shot { position: relative; }
+  .pin {
+    position: absolute; transform: translate(-50%, -50%);
+    width: 1.55em; height: 1.55em; border-radius: 50%;
+    background: var(--orange); color: var(--white);
+    font-size: 0.6875rem; font-weight: 700;
+    display: grid; place-items: center; font-variant-numeric: tabular-nums;
+    box-shadow: 0 0 0 2px var(--white);
+  }
+  .keys { display: grid; grid-template-columns: repeat(auto-fit, minmax(215px, 1fr)); gap: 7px 24px; }
+  .key { display: flex; gap: 8px; font-size: 0.8125rem; }
+  .keynum {
+    flex: 0 0 auto; width: 16px; height: 16px; border-radius: 50%;
+    background: var(--orange); color: var(--white); font-size: 0.625rem; font-weight: 700;
+    display: grid; place-items: center; font-variant-numeric: tabular-nums;
+    margin-top: 2px;
+  }
+  .key span.t { color: var(--muted); }
+  .key b { font-weight: 600; color: var(--dark); }
+
+  .grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 22px; }
+  .grid3 > * { min-width: 0; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px 28px; }
+  .grid2 > * { min-width: 0; }
+  @media (max-width: 700px) { .grid2 { grid-template-columns: 1fr; } }
+
+  ul { margin: 0; padding-left: 1.15em; display: flex; flex-direction: column; gap: 5px; }
+  li { padding-left: 0.15em; color: var(--muted); }
+  li::marker { color: var(--orange); }
+  li b { color: var(--dark); font-weight: 600; }
+
+  .foot { font-size: 0.75rem; color: var(--grey); display: flex; flex-wrap: wrap; gap: 6px 22px; }
+  a { color: var(--orange); }
+</style>
+
+<!-- ===================== header ===================== -->
+<div class="band--dark">
+  <div class="wrap wrap--head head">
+    <img src="images/innergy-logo.svg" alt="INNERGY">
+    <span class="vtag">v2.1 · Windows</span>
+  </div>
+</div>
+
+<!-- ===================== 1 — what it's for ===================== -->
+<div class="wrap stack">
+  <div class="stack stack--sm">
+    <p class="eyebrow">1 — What it's for</p>
+    <h1>Walking a work order's drawings</h1>
+    <p class="lead">
+      A Microvellum work order drops dozens of DXF files into one folder. Open any one of
+      them and step through the rest with the arrow keys — no file dialog, no reopening,
+      no waiting for CAD. When a drawing needs the real thing, send it straight to
+      Microvellum from the toolbar.
+    </p>
+  </div>
+
+  <div class="how">
+    <div class="howitem">
+      <h3><kbd>←</kbd> <kbd>→</kbd> through the folder</h3>
+      <p>Every DXF and DWG in the same folder, in order, wrapping at either end. The view re-fits on each one.</p>
+    </div>
+    <div class="howitem">
+      <h3>Open in Microvellum</h3>
+      <p>Launches the current file in Microvellum when you need to go further than looking.</p>
+    </div>
+    <div class="howitem">
+      <h3>Stays on top</h3>
+      <p>Pin the viewer above Microvellum and compare the two side by side.</p>
+    </div>
+  </div>
+
+  <div class="stack stack--sm">
+    <h2>The window</h2>
+    <figure>
+      <div class="shot">
+        <img src="images/app.png" alt="The viewer with a cabinetry part open: full toolbar across the top, the drawing on a white background, the layers panel on the right, and the status bar along the bottom.">
+        <span class="pin" style="left:6.96%;  top:3.4%;">1</span>
+        <span class="pin" style="left:19.84%; top:3.4%;">2</span>
+        <span class="pin" style="left:28.04%; top:3.4%;">3</span>
+        <span class="pin" style="left:35.76%; top:3.4%;">4</span>
+        <span class="pin" style="left:42.77%; top:3.4%;">5</span>
+        <span class="pin" style="left:50.05%; top:3.4%;">6</span>
+        <span class="pin" style="left:58.64%; top:3.4%;">7</span>
+        <span class="pin" style="left:70.00%; top:3.4%;">8</span>
+        <span class="pin" style="left:92.66%; top:3.4%;">9</span>
+      </div>
+      <figcaption>
+        One part from a work order, in Light Mode. Blue border, red dimension values, green
+        routing toolpath; layers on the right, with a count per layer and a solo button to
+        isolate one.
+      </figcaption>
+    </figure>
+
+    <div class="keys" style="margin-top: 8px;">
+      <p class="key"><span class="keynum">1</span><span class="t"><b>Previous / Next</b> — step the folder. Same as <kbd>←</kbd> and <kbd>→</kbd>.</span></p>
+      <p class="key"><span class="keynum">2</span><span class="t"><b>Open File</b> — or drag one in. <kbd>Ctrl</kbd>+<kbd>O</kbd>. Opens in a tab.</span></p>
+      <p class="key"><span class="keynum">3</span><span class="t"><b>Fit to Window</b> — re-centres the drawing. Also <kbd>F</kbd>.</span></p>
+      <p class="key"><span class="keynum">4</span><span class="t"><b>Export PNG</b> — an image of the drawing at full size.</span></p>
+      <p class="key"><span class="keynum">5</span><span class="t"><b>Measure</b> — crosshair and live distance between two points.</span></p>
+      <p class="key"><span class="keynum">6</span><span class="t"><b>Light Mode</b> — white drawing ground, as shown here.</span></p>
+      <p class="key"><span class="keynum">7</span><span class="t"><b>View Source</b> — opens the raw file in Notepad.</span></p>
+      <p class="key"><span class="keynum">8</span><span class="t"><b>Open with Microvellum</b> — the current file, in Microvellum.</span></p>
+      <p class="key"><span class="keynum">9</span><span class="t"><b>Always on Top</b> — keeps the viewer above other windows.</span></p>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== 2 — what else it does ===================== -->
+<div class="band--light">
+  <div class="wrap stack">
+    <div class="stack stack--sm">
+      <p class="eyebrow">2 — What else it does</p>
+      <h2>Beyond looking at the drawing</h2>
+    </div>
+
+    <div class="grid2">
+      <div class="stack stack--sm">
+        <h3>Measuring and inspecting</h3>
+        <ul>
+          <li><b>Measure</b> — two clicks for a distance with dX and dY, updating live as the cursor moves and snapping to endpoints and circle centres.</li>
+          <li><b>Inspect</b> — click an entity for its type, layer, coordinates and length or radius.</li>
+          <li><b>Units</b> — drawing units, imperial or metric.</li>
+          <li><b>Layers</b> — entity counts per layer, and solo to isolate one.</li>
+        </ul>
+      </div>
+      <div class="stack stack--sm">
+        <h3>Known limits</h3>
+        <ul>
+          <li>DWG solid bodies draw as wireframe, not shaded faces.</li>
+          <li>3D wireframes are not visible in Light Mode — use the dark ground for those.</li>
+          <li>Layout tabs are read from DWG only.</li>
+          <li>Hatches draw their boundary, not the fill pattern.</li>
+          <li>Viewer only — nothing is written back.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="grid3" style="margin-top: 8px;">
+      <figure>
+        <img src="images/nesting.png" alt="A nesting sheet with many cabinetry parts laid out on one sheet.">
+        <figcaption><b>Nesting sheets.</b> Lines stay one pixel thin at any zoom, so a full sheet reads and a single boring stays crisp.</figcaption>
+      </figure>
+      <figure>
+        <img src="images/multipage.png" alt="A multi-sheet DWG with a Page dropdown above the drawing area.">
+        <figcaption><b>Layout tabs.</b> A DWG's Paper Space sheets become selectable pages — one bedroom drawing opens as 21.</figcaption>
+      </figure>
+      <figure>
+        <img src="images/three-d.png" alt="A 3D wireframe of a drawer side on a dark background.">
+        <figcaption><b>3D bodies.</b> A DWG with solid bodies opens in an orbit view — drag to rotate, wheel to zoom.</figcaption>
+      </figure>
+    </div>
+  </div>
+</div>
+
+<div class="band--dark">
+  <div class="wrap wrap--head foot">
+    <span>Microvellum DXF Viewer v2.1 — built and maintained in-house</span>
+    <span><a href="https://github.com/granterogers/dxf-viewer">github.com/granterogers/dxf-viewer</a></span>
+  </div>
+</div>
