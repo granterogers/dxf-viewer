@@ -22,12 +22,22 @@ jobs:
       - name: Restore
         run: dotnet restore
 
+      # Self-contained: the .NET runtime ships inside the executable, so the download
+      # runs on a machine with nothing installed. A framework-dependent build is a
+      # fifteenth of the size but fails on any shop PC without the .NET 8 runtime,
+      # which is most of them.
       - name: Publish
         run: >
           dotnet publish -c Release -r win-x64
-          --self-contained false
+          --self-contained true
           -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:EnableCompressionInSingleFile=true
+          -p:DebugType=none
           -o ./publish
+
+      - name: Add the end-user readme
+        run: Copy-Item packaging/README.txt ./publish/README.txt
 
       - name: Zip artifact
         run: Compress-Archive -Path ./publish/* -DestinationPath DxfViewer-${{ github.ref_name }}.zip
